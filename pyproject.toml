@@ -1,0 +1,23 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "hotel-mcp"
+version = "1.0.0"
+description = "Independent hotel work-order business service over MCP"
+requires-python = ">=3.12"
+dependencies = ["mcp==1.22.0", "httpx==0.28.1", "uvicorn==0.38.0"]
+
+[project.optional-dependencies]
+test = ["pytest>=8,<9", "pytest-asyncio>=0.24,<2"]
+
+[project.scripts]
+hotel-mcp = "hotel_mcp.__main__:main"
+
+[tool.setuptools.packages.find]
+include = ["hotel_mcp*"]
+
+[tool.pytest.ini_options]
+asyncio_mode = "auto"
+testpaths = ["tests"]

@@ -1,0 +1,4 @@
+**
+!hotel_mcp/
+!hotel_mcp/*.py
+!requirements.txt

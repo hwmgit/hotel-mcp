@@ -1,0 +1,7 @@
+services:
+  hotel-mcp:
+    build: .
+    image: hotel-mcp:local
+    restart: unless-stopped
+    ports: ["127.0.0.1:8120:8120"]
+    volumes: ["./data:/data"]
