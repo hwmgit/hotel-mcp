@@ -21,7 +21,7 @@
 
 ## 2026-10-20：受控部署 / MySQL 8
 
-部署目标 `https://mcp-hotel.yingzeai.com/admin/`，GitLab `https://gitlab.leyingiot.com/yingze/mcp-hotel.git`，分支 `release_20261020`。使用根目录 `docker-compose.coolify.yml`，RDS 的五项 `DB_*` 变量由平台自动生成，无需提交连接密码。操作步骤、初始化规则、备份和验收见 [部署文档](docs/deployment.md)。已部署并通过公网 HTTPS 健康检查，运行代码提交 `71f07eb`。
+部署目标 `https://mcp-hotel.yingzeai.com/admin/`，GitLab `https://gitlab.leyingiot.com/yingze/mcp-hotel.git`，分支 `release_20261020`。使用根目录 `docker-compose.coolify.yml`，RDS 的五项 `DB_*` 变量由平台自动生成，无需提交连接密码。操作步骤、初始化规则、备份和验收见 [部署文档](docs/deployment.md)。已部署并通过公网 HTTPS 健康检查，当前运行代码提交 `63595b3`（含页面接入配置）。
 
 本地默认 SQLite 保持兼容；部署入口显式选择 MySQL 8.0.16+，不读取或迁移本机运行数据。首次准备五家门店（中心、江畔、机场、湖畔、会展）、最近30天600条营业订单、10个入住和25张业务工单；重复部署不会重置处理结果或凭据。按客户最新要求，线上门店和页面采用正常业务名称，内部仍记录模拟来源；销售不与工单自动结算。早期章节的“演示”标签描述本地样例历史规则。
 
