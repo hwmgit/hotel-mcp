@@ -1,14 +1,18 @@
 ## 2026-10-20：MySQL 8 与受控部署适配
 
-目标：`mcp-hotel.yingzeai.com`，GitLab `https://gitlab.leyingiot.com/yingze/mcp-hotel.git`，分支 `release_20261020`，平台“ MCP项目 ”/production，RDS 连接由平台生成。具体步骤见 `docs/deployment.md`。本地适配和验收已完成；正在发布分支并进行平台预检，尚未执行线上初始化。
+目标：`mcp-hotel.yingzeai.com`，GitLab `https://gitlab.leyingiot.com/yingze/mcp-hotel.git`，分支 `release_20261020`，平台“ MCP项目 ”/production，RDS 连接由平台生成。具体步骤见 `docs/deployment.md`。完整功能已推送指定 GitLab 分支。平台预检提交 `71f07eb` 全部通过，用户已确认创建应用、专用 RDS 账号并部署；应用 `zaqdbg5k9cw15js6de9szkc7` 已创建，首次部署 `b10e6i8fqm4ractarroumfbo` 已完成，运行提交 `71f07eb`，平台显示 healthy。线上初始化与公网验收均通过。
 
 - 新增原生 MySQL v6 结构与兼容现有参数化业务 SQL 的适配层，保留 SQLite 默认入口。InnoDB 写锁保护幂等、并发容量和事件提交顺序；不用 SUPER 权限或 RDS 全局配置，时段目录写入经事务内重叠校验。
 - 根目录 `docker-compose.coolify.yml` 对接平台 v1 清单、自动生成的五项 DB 变量、健康检查、资源限额与私有命名卷；修复 Docker 构建忽略网页静态资源的问题。
 - 首次准备五店、近30天600条营业订单、10个入住、25张业务单和完整菜单/预约目录。按用户新要求使用正常门店名称和页面文案，内部保留模拟来源记录。重复启动不重置业务、凭据和日期；私有卷丢失、归属不明或种子冲突时拒绝覆盖。
 - MySQL DDL 非整体原子；已验证部分建表失败后可显式重试恢复。未自动搬迁任何 SQLite 运行库，不复制本地硬件云端接入点。仍使用通用 MCP、business://events 和智能体通知协同。
-- 验收：156 passed / 51.21秒，含受限账号的真实 MySQL 8 测试、五业务、跨店权限、并发预约、幂等、故障回滚、迁移恢复、正式 Linux 容器启动、页面资源、健康检查和平台重复迁移钩子。平台 JSON Schema 和 Compose config 校验通过；两项依赖弃用警告不影响结果。
+- 验收：156 passed / 51.21秒，含受限账号的真实 MySQL 8 测试、五业务、跨店权限、并发预约、幂等、故障回滚、迁移恢复、正式 Linux 容器启动、页面资源、健康检查和平台重复迁移钩子。平台 JSON Schema 和 Compose config 校验通过；实际平台预检额外要求 RDS 声明 `local-dist` 制品，已修正为 `/hotel_mcp/web` 并通过全部预检（审计 `6d572b50-e9c6-44c8-b026-050906115617`）。修正后标准回归148通过、8项MySQL开关测试跳过；两项依赖弃用警告不影响结果。
 
-临时测试容器、数据库和卷已清理。原8121实例、其数据和真实801硬件连接未启停或修改。新增部署逻辑与既有所有业务/出站连接改动一并保留，线上验收结果后续追加。
+线上实测：`/health`、`/admin/`、`/admin/assets/app.js` 均 HTTPS 200。平台在证书生效后记录 public health verified。RDS 实际包含五店、600条营业订单、10个入住、25张工单（五类各5）、20道菜和90个预约时段；门店为中心、江畔、机场、湖畔、会展。通过公网授权销售 API 查询合计18,810,000分（188,100元），并将中心店101样例报障从pending经accepted处理到completed/version3；公网客房 MCP 握手及详情读取通过，未登录请求401。其他24张初始业务单未处理。本次未连接新硬件接入点，不代表线上设备语音已验收。
+
+访问入口：`https://mcp-hotel.yingzeai.com/admin/`，已在浏览器打开。登录凭据仍只在本应用命名卷 `/data/bootstrap/config.json` 内，未输出到聊天、日志或仓库。无敏感值的部署和验收截图留于本机忽略目录 `.codex-log/deployment-20261020/`。临时容器终端页面已关闭。当前 Dockerfile 使用官方 Python 基础镜像与默认 PyPI；首轮服务器 pip 下载约357秒，尚未切换阿里云镜像源，服务器级 Docker mirror 配置未核对。
+
+临时测试容器、数据库和卷已清理。原8121实例、其数据和真实801硬件连接未启停或修改。新增部署逻辑与既有所有业务/出站连接改动一并提交到用户指定发布分支；GitHub origin 与 GitLab main 未改动。后续文档提交不改变本次已部署业务代码。
 
 # 当前状态
 

@@ -10,7 +10,7 @@
 4. 在应用中手动点击部署。容器启动执行 `python -m hotel_mcp.deployment serve`；平台迁移钩子执行 `python -m hotel_mcp.deployment prepare`。两者共用可重复准备流程，首次启动已准备好数据才提供健康检查，避免健康检查等待与迁移钩子互相阻塞。
 5. 等待平台报告完成，检查 HTTPS `/health` 和 `/admin/`；用本应用私有配置中的前台、客房和销售管理身份验证页面和 MCP 权限。
 
-未配置单独的前端/API域名：静态页面、业务 API 和 MCP 均为同源。Compose 只 expose 8120，公网 TLS/路由由平台代理负责，不绑定宿主机端口。单副本 1 CPU / 512M，无 Node 构建、宿主机目录或硬件平台源码挂载。现有 `compose.yaml` 保留本地 SQLite 用法。
+未配置单独的前端/API域名：静态页面、业务 API 和 MCP 均为同源。Compose 只 expose 8120，公网 TLS/路由由平台代理负责，不绑定宿主机端口。单副本 1 CPU / 512M，前端制品声明为 `local-dist`、路径 `/hotel_mcp/web`（已随代码提供的 HTML/CSS/JS）；RDS 类型的预检不接受 `none`。无 Node 构建、宿主机目录或硬件平台源码挂载。现有 `compose.yaml` 保留本地 SQLite 用法。
 
 ## 数据与私有配置
 
@@ -59,3 +59,9 @@ $env:HOTEL_TEST_IMAGE = 'hotel-mcp:mysql-demo-20261020'
 测试自动创建带随机密码的临时 MySQL 8 容器、仅限测试库的账号、回环随机端口以及临时应用容器和卷；结束清理自己创建的资源，不连接任何外部 RDS。未设置开关时跳过 MySQL 集成测试，仍运行 SQLite 回归与静态契约检查。
 
 2026-10-20：156项通过（51.21秒），包含正式 Linux 镜像启动、网页资源、健康检查、迁移钩子重复执行、五店600单、五业务闭环、权限隔离、并发确认、幂等、故障回滚和中断迁移恢复。两项告警为现有 WebSocket 依赖弃用提示。平台线上验收结果另见 `current-state.md`。
+
+## 本次上线结果
+
+2026-10-20，应用 `zaqdbg5k9cw15js6de9szkc7` 部署 `b10e6i8fqm4ractarroumfbo` 已完成，运行代码 `71f07eb`。平台 healthy，公网 `/health`、管理页和脚本均200。RDS 核实五店600单、营业汇总188,100元、10个入住、25张工单、20道菜和90个时段。中心店101报障样例已完成前台受理/完成验收（version3），客房经公网 MCP 读到completed；未登录401。
+
+本次构建仍使用默认 PyPI，服务器首次下载约357秒；未配置项目级阿里云 pip 镜像，也未核对服务器级 Docker mirror。更改镜像源应作为后续独立优化，不影响当前已上线实例。
