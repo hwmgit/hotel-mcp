@@ -1,5 +1,6 @@
 """Same-origin UI adapter; delegates every business operation to MCP's dispatcher."""
 import hmac
+import asyncio
 import json
 import sqlite3
 from pathlib import Path
@@ -12,7 +13,7 @@ from .domain import BusinessError, fail
 from .toolkit import READ_TOOLS, tools_for
 
 
-def admin_routes(endpoints, config):
+def admin_routes(endpoints, config, connections):
     by_id = {e.principal.principal_id: e for e in endpoints}
     static = Path(__file__).parent / "web"
 
@@ -31,7 +32,9 @@ def admin_routes(endpoints, config):
             if request.method == "GET":
                 p = endpoint.principal
                 return JSONResponse({"principal": {"id": p.principal_id, "role": p.role, "hotel": p.hotel, "room": p.room},
-                                     "tools": [t.name for t in tools_for(p)]}, headers=headers)
+                                     "tools": [t.name for t in tools_for(p)],
+                                     "capabilities": {"manage_connections": p.role == "frontdesk" and connections.path is not None}},
+                                    headers=headers)
             raw = await request.body()
             if len(raw) > 65536:
                 fail("VALIDATION_ERROR", "请求内容过大")
@@ -56,6 +59,38 @@ def admin_routes(endpoints, config):
         return FileResponse(static / "index.html", headers={"Cache-Control": "no-store", "X-Frame-Options": "DENY",
                                                             "X-Content-Type-Options": "nosniff"})
 
+    async def connection_api(request, probe=False):
+        headers = {"Cache-Control": "no-store", "X-Content-Type-Options": "nosniff"}
+        try:
+            actor = identity(request).principal
+            connections.authorize(actor, request.path_params.get("target_id"))
+            if request.method == "GET":
+                value = connections.snapshot(actor)
+            else:
+                raw = await request.body()
+                if len(raw) > 8192:
+                    fail("VALIDATION_ERROR", "配置内容过大")
+                try:
+                    body = json.loads(raw)
+                except (ValueError, UnicodeDecodeError):
+                    fail("VALIDATION_ERROR", "请求须为 JSON")
+                target = request.path_params["target_id"]
+                if probe:
+                    value = await connections.test(actor, target, body)
+                else:
+                    # A disconnected browser must not interrupt disk-save / task-switch halfway.
+                    value = await asyncio.shield(connections.save(actor, target, body))
+            return JSONResponse(value, headers=headers)
+        except BusinessError as exc:
+            code = {"UNAUTHORIZED": 401, "FORBIDDEN": 403, "NOT_FOUND": 404, "VERSION_CONFLICT": 409,
+                    "IDEMPOTENCY_CONFLICT": 409, "TEMPORARY_UNAVAILABLE": 503}.get(exc.code, 400)
+            return JSONResponse(exc.payload(), status_code=code, headers=headers)
+        except sqlite3.OperationalError:
+            return JSONResponse({"message": "暂时无法验证业务身份，请重试"}, status_code=503, headers=headers)
+
+    async def connection_test(request):
+        return await connection_api(request, probe=True)
+
     async def public_config(request):
         # Only public analytics identifiers; never serialize the private config or any principal.
         analytics = config.get("analytics", {})
@@ -66,4 +101,7 @@ def admin_routes(endpoints, config):
     return [Route("/", lambda request: RedirectResponse("/admin/")), Route("/admin", page), Route("/admin/", page),
             Route("/admin/config", public_config), Mount("/admin/assets", StaticFiles(directory=static)),
             Route("/api/{principal_id}/session", api, methods=["GET"]),
+            Route("/api/{principal_id}/connections", connection_api, methods=["GET"]),
+            Route("/api/{principal_id}/connections/{target_id}/test", connection_test, methods=["POST"]),
+            Route("/api/{principal_id}/connections/{target_id}", connection_api, methods=["POST"]),
             Route("/api/{principal_id}/tools/{tool}", api, methods=["POST"])]

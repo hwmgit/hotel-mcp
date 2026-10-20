@@ -110,7 +110,7 @@ def main():
                       stream, ensure_ascii=False, indent=2)
         print(f"Created private configuration: {path.resolve()}")
         return
-    app = create_app(json.loads(path.read_text(encoding="utf-8-sig")), args.database or "data/hotel.sqlite3")
+    app = create_app(json.loads(path.read_text(encoding="utf-8-sig")), args.database or "data/hotel.sqlite3", config_path=path)
     uvicorn.run(app, host=args.host, port=args.port, access_log=False)
 
 

@@ -115,7 +115,7 @@ def main():
             print(json.dumps(result))
             return
         from .server import create_app
-        uvicorn.run(create_app(config, "mysql"), host="0.0.0.0", port=args.port, access_log=False)
+        uvicorn.run(create_app(config, "mysql", config_path=Path(args.data_dir) / "bootstrap/config.json"), host="0.0.0.0", port=args.port, access_log=False)
     except (ValueError, sqlite3.Error, OSError) as exc:
         # Never print third-party exceptions, DSNs, SQL values, or credentials.
         parser.exit(1, f"Hotel deployment failed ({type(exc).__name__}); verify DB variables, schema and private volume.\n")

@@ -36,7 +36,7 @@ async function write(tool, args) {
   return result;
 }
 function nav() {
-  const all = [["overview","◫",role()==="room"?"我的服务":"工作概览",has("hotel_query_requests")], ["requests","▤","工单中心",has("hotel_query_requests")], ["meals","♧","餐饮服务",has("hotel_list_menu")], ["bookings","▦","场地预约",has("hotel_list_booking_slots")], ["sales","▥","经营数据",has("hotel_query_sales")], ["resolve","⌕","名称助手",has("hotel_resolve_entities")]];
+  const all = [["overview","◫",role()==="room"?"我的服务":"工作概览",has("hotel_query_requests")], ["requests","▤","工单中心",has("hotel_query_requests")], ["meals","♧","餐饮服务",has("hotel_list_menu")], ["bookings","▦","场地预约",has("hotel_list_booking_slots")], ["sales","▥","经营数据",has("hotel_query_sales")], ["resolve","⌕","名称助手",has("hotel_resolve_entities")], ["connections","⇄","AI 接入配置",state.session?.capabilities?.manage_connections]];
   $("#nav").innerHTML = all.filter(x=>x[3]).map(([id,icon,label])=>`<button data-view="${id}" class="${state.view===id?"active":""}"><span class="nav-icon">${icon}</span>${label}</button>`).join("");
   $("#breadcrumb").textContent = all.find(x=>x[0]===state.view)?.[2] || "工作台";
 }
@@ -86,11 +86,30 @@ async function sales() {
   $("#content").innerHTML=pageHead("经营数据","从单店到多店，以相同口径了解经营表现。",'<span class="tag amber">门店经营概览</span>')+`<section class="panel"><form id="sales-filter" class="filters"><label>门店<select name="hotel"><option value="">全部授权门店</option>${state.stores.map(s=>`<option value="${esc(s.hotel)}" ${state.salesHotel===s.hotel?"selected":""}>${esc(s.name)}</option>`).join("")}</select></label><label>开始日期<input name="from" type="date" value="${esc(state.salesFrom)}" required></label><label>结束日期<input name="to" type="date" value="${esc(state.salesTo)}" required></label><button class="primary">查询数据</button></form></section><div class="stats"><div class="stat"><span>销售额</span><strong>${money(data.totals.sales_amount_minor)}</strong><small>已结算订单口径</small></div><div class="stat"><span>订单数</span><strong>${data.totals.order_count}</strong><small>含所选日期首尾</small></div><div class="stat"><span>所选门店</span><strong>${data.by_store.length}</strong><small>仅当前身份授权门店</small></div><div class="stat"><span>统计天数</span><strong>${data.daily_trend.length}</strong><small>北京时间营业日</small></div></div><div class="grid"><section class="panel"><div class="panel-head"><h3>每日销售趋势</h3><small>人民币元</small></div><div class="bars">${data.daily_trend.map(d=>`<div class="bar-col" title="${esc(d.date)} ${money(d.sales_amount_minor)}"><div class="bar" style="height:${Math.max(1,d.sales_amount_minor/dailyMax*150)}px" role="img" aria-label="${esc(d.date)} ${money(d.sales_amount_minor)}"></div><small>${esc(d.date.slice(5))}</small></div>`).join("")}</div></section><section class="panel"><div class="panel-head"><h3>门店销售对比</h3><small>销售额降序</small></div><div class="ranking">${data.by_store.map((s,i)=>`<div><div class="rank-head"><span>${i+1}. ${esc(s.name)}</span><b>${money(s.sales_amount_minor)}</b></div><div class="rank-track"><div class="rank-fill" style="width:${s.sales_amount_minor/max*100}%"></div></div></div>`).join("")||empty("暂无门店")}</div></section></div><section class="panel"><h3>业务分类</h3>${data.by_category.map(c=>`<div class="category-row"><span>${cats[c.category]} <small class="muted">${c.order_count} 单</small></span><b>${money(c.sales_amount_minor)}</b></div>`).join("")}</section><p class="fine">本页使用独立营业台账。续房报价、点餐下单和服务完成不会自动计入收入。</p>`;
 }
 function resolver() {$("#content").innerHTML=pageHead("名称助手","把用户口中的门店，匹配到可查询的业务实体。",'<span class="tag">仅当前授权范围</span>')+`<section class="panel resolver"><h3>想查询哪家门店？</h3><p class="muted">支持门店别名与近似名称，存在歧义时先澄清再查询。</p><form id="resolve-form" class="filters"><label>识别到的门店名称<input name="query" placeholder="试试：中心门店、江盼店、市区店" maxlength="80" required></label><button class="primary">解析名称</button></form><div id="resolution"></div></section>`;}
+async function connections() {
+  const data=await api("connections");
+  const labels={disabled:"未启用",stopped:"已停止",connecting:"连接中",connected:"传输已连接",retrying:"正在重试"};
+  $("#content").innerHTML=pageHead("AI 接入配置","将本店的客房或前台身份接入对应智能体，保存后立即生效。",'<button data-refresh>↻ 刷新连接状态</button>')+`<div class="notice">每个身份使用独立接入点。测试检查 WebSocket 握手与心跳；业务工具和通知请在智能体侧验证。修改配置无需重启服务。</div><div class="connection-grid">${data.connections.map(c=>`<section class="panel connection-card"><div class="panel-head"><div><p class="eyebrow">${c.role==="room"?"客房智能体":"前台智能体"}</p><h3>${c.role==="room"?esc(c.room)+" 号客房":"前台服务"}</h3></div><span data-connection-state="${esc(c.id)}" class="tag ${c.state==="connected"?"green":c.state==="retrying"?"amber":"gray"}">${esc(labels[c.state]||c.state)}</span></div><p class="fine">业务身份 · ${esc(c.id)}</p><p class="connection-address">${esc(c.masked_endpoint||"尚未配置接入点")}</p><form data-connection="${esc(c.id)}" data-version="${c.version}"><label>新的 MCP 接入点<input name="endpoint" type="password" maxlength="4096" autocomplete="off" spellcheck="false" placeholder="粘贴平台提供的 wss:// 接入地址"></label><p class="fine">保存后不回显完整地址。留空可测试当前已保存连接。</p><div class="connection-actions"><button type="submit" name="action" value="test">测试连通性</button><button type="submit" name="action" value="save" class="primary">保存并生效</button><button type="submit" name="action" value="disable" ${c.configured?"":"disabled"}>停用连接</button></div><p class="connection-result" role="status" aria-live="polite"></p></form></section>`).join("")}</div>`;
+}
+async function submitConnection(form, action) {
+  const target=form.dataset.connection, value=form.elements.endpoint.value.trim();
+  const message=form.querySelector(".connection-result");
+  message.textContent=action==="test"?"正在测试，请稍候…":"正在保存并切换连接…";
+  try {
+    if(action==="test") {const result=await api(`connections/${encodeURIComponent(target)}/test`,value?{endpoint:value}:{});message.textContent=result.message;message.classList.toggle("error",!result.ok);return;}
+    if(action==="save"&&!value)throw new Error("请填写新的接入点；如需断开，请点击停用连接。");
+    const args={endpoint:action==="disable"?"":value,expected_version:Number(form.dataset.version)};
+    const signature=`connection:${state.auth.id}:${target}:${JSON.stringify(args)}`;
+    if(!retryKeys.has(signature))retryKeys.set(signature,crypto.randomUUID());
+    await api(`connections/${encodeURIComponent(target)}`,{...args,request_key:retryKeys.get(signature)});
+    retryKeys.delete(signature);form.reset();toast(action==="disable"?"连接已停用":"配置已保存，正在应用新连接");await connections();
+  } catch(error) {message.textContent=error.message;message.classList.add("error");}
+}
 async function showView(view, silent=false) {
   if (!state.session) return;
   state.view=view; nav();
   if(!silent) $("#content").innerHTML='<div class="loading">正在获取最新业务数据…</div>';
-  try {await ({overview, requests, meals, bookings, sales, resolve:resolver}[view]||overview)();$("#updated").textContent=`更新于 ${new Date().toLocaleTimeString("zh-CN")}`;}
+  try {await ({overview, requests, meals, bookings, sales, connections, resolve:resolver}[view]||overview)();$("#updated").textContent=`更新于 ${new Date().toLocaleTimeString("zh-CN")}`;}
   catch(error){if(!silent)$("#content").innerHTML=`<section class="panel">${empty("暂时无法加载",esc(error.message))}<button data-refresh>重试</button></section>`;else toast(error.message);}
 }
 function available(r) {
@@ -146,6 +165,7 @@ document.addEventListener("submit",async event=>{
   const form=event.target;if(form.id==="login-form")return;event.preventDefault();if(state.busy)return;state.busy=true;const btn=event.submitter;if(btn)btn.disabled=true;
   const values=Object.fromEntries(new FormData(form));
   try{
+    if(form.dataset.connection)await submitConnection(form,btn?.value||"save");
     if(form.id==="request-filter"){state.filterType=values.type;state.filterStatus=values.status;await requests();}
     if(form.id==="slot-filter"){state.bookingKind=values.kind;state.bookingDate=values.date;await bookings();}
     if(form.id==="sales-filter"){state.salesHotel=values.hotel;state.salesFrom=values.from;state.salesTo=values.to;await sales();}
@@ -160,5 +180,12 @@ document.addEventListener("submit",async event=>{
   }catch(error){if(form.id==="action-form"&&$("#action-error"))$("#action-error").textContent=error.message;else toast(error.message);}finally{state.busy=false;if(btn)btn.disabled=false;}
 });
 setInterval(()=>{if(state.session&&!state.busy&&!$("#detail").open&&["overview","requests"].includes(state.view)&&!document.querySelector("#content form :focus"))showView(state.view,true);},15000);
+setInterval(async()=>{
+  if(!state.session||state.busy||state.view!=="connections")return;
+  try {const data=await api("connections");if(state.view!=="connections")return;
+    const labels={disabled:"未启用",stopped:"已停止",connecting:"连接中",connected:"传输已连接",retrying:"正在重试"};
+    for(const row of data.connections){const el=[...document.querySelectorAll("[data-connection-state]")].find(e=>e.dataset.connectionState===row.id);if(el){el.textContent=labels[row.state]||row.state;el.className="tag "+(row.state==="connected"?"green":row.state==="retrying"?"amber":"gray");}}
+  } catch(_) { /* Explicit refresh presents errors; background polling preserves typed credentials. */ }
+},5000);
 // Analytics is opt-in, public identifiers only, and never active on local/test previews.
 fetch("/admin/config").then(r=>r.json()).then(({analytics:a})=>{const host=location.hostname;if(a?.enabled!==true||a.environment!=="production"||!a.website_id||host!==a.production_domain||location.protocol!=="https:"||/(localhost|^127\.|\.test$|\.local$|preview|staging|^\[?::1\]?$)/i.test(host))return;const url=new URL(a.script_url);if(url.protocol!=="https:")return;const script=document.createElement("script");script.src=url.href;script.defer=true;script.dataset.websiteId=a.website_id;document.head.append(script);}).catch(()=>{});

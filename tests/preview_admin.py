@@ -19,7 +19,7 @@ async def preview(stop_file):
         config = json.loads((root / "config.json").read_text(encoding="utf-8"))
         for row in config["principals"]:
             row["token"] = "test-only-" + row["id"] + "-" + "x" * 32
-        app = create_app(config, root / "hotel.sqlite3")
+        app = create_app(config, root / "hotel.sqlite3", config_path=root / "config.json", allow_local_mcp=True)
         sock = socket.socket()
         sock.bind(("127.0.0.1", 0))
         print(f"Preview: http://127.0.0.1:{sock.getsockname()[1]}/admin/", flush=True)

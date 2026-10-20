@@ -135,7 +135,7 @@ class Endpoint:
         await self.manager.handle_request(scope, receive, send)
 
 
-def create_app(config, database):
+def create_app(config, database, *, config_path=None, allow_local_mcp=False):
     store = HotelStore(database)
     endpoints = []
 
@@ -148,7 +148,6 @@ def create_app(config, database):
         store.entities.configure_aliases(config["store_aliases"])
 
     routes, ids, tokens = [], set(), set()
-    outbound, connection_status = [], {}
     for row in config["principals"]:
         key, token = row["id"], row["token"]
         if not re.fullmatch(r"[a-zA-Z0-9_-]{1,64}", key) or key in ids or token in tokens or len(token) < 32:
@@ -160,29 +159,22 @@ def create_app(config, database):
         endpoint = Endpoint(store, Principal(row.get("hotel", ""), row["role"], row.get("room", ""),
                                              row.get("stay_id", ""), key, tuple(allowed)), token, publish)
         endpoints.append(endpoint)
-        if row.get("mcp_endpoint"):
-            from .outbound import validate_endpoint
-            url = validate_endpoint(row["mcp_endpoint"])
-            if any(existing == url for _, existing in outbound):
-                raise ValueError("Each MCP endpoint must belong to exactly one business identity")
-            outbound.append((endpoint, url))
-            connection_status[key] = {"state": "stopped"}
         routes.append(Route("/" + key + "/mcp", endpoint, methods=["GET", "POST", "DELETE"]))
+
+    from .connections import Connections
+    connections = Connections(endpoints, config, config_path, allow_local_mcp)
+    connection_status = connections.status
 
     @asynccontextmanager
     async def lifespan(app):
         async with AsyncExitStack() as stack:
             for endpoint in endpoints:
                 await stack.enter_async_context(endpoint.manager.run())
-            from .outbound import run_connector
-            tasks = [asyncio.create_task(run_connector(endpoint, url, connection_status[endpoint.principal.principal_id]))
-                     for endpoint, url in outbound]
+            await connections.start()
             try:
                 yield
             finally:
-                for task in tasks:
-                    task.cancel()
-                await asyncio.gather(*tasks, return_exceptions=True)
+                await connections.close()
 
     async def health(request):
         if store.is_mysql:
@@ -195,4 +187,6 @@ def create_app(config, database):
                              "mcp_connections": connection_status})
 
     from .admin import admin_routes
-    return Starlette(routes=[Route("/health", health), *routes, *admin_routes(endpoints, config)], lifespan=lifespan)
+    app = Starlette(routes=[Route("/health", health), *routes, *admin_routes(endpoints, config, connections)], lifespan=lifespan)
+    app.state.connections = connections
+    return app

@@ -10,3 +10,6 @@ data/
 *.log
 .codex-tmp/
 .codex-log/
+
+# Private live MCP connection settings (may be next to a custom config path).
+mcp-connections.json
