@@ -36,6 +36,8 @@ def test_controlled_compose_contract():
     compose = yaml.safe_load((root / "docker-compose.coolify.yml").read_text(encoding="utf-8"))
     manifest = compose["x-hzyz-deploy"]
     assert manifest["application"]["type"] == "rds"
+    assert manifest["build"] == {"node_artifact": "local-dist", "artifact_path": "/hotel_mcp/web"}
+    assert (root / manifest["build"]["artifact_path"].lstrip("/") / "index.html").is_file()
     assert manifest["database"]["migration_command"] == "python -m hotel_mcp.deployment prepare"
     assert {v["name"] for v in manifest["environment"]["variables"]} == \
         {"DB_HOST", "DB_PORT", "DB_DATABASE", "DB_USERNAME", "DB_PASSWORD"}

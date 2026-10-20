@@ -22,7 +22,8 @@ x-hzyz-deploy:
     volumes:
       - {name: hotel-private, target: /data}
   resources: {cpu_limit: "1.00", memory_limit: 512M}
-  build: {node_artifact: none}
+  # The shipped HTML/CSS/JS is the local frontend artifact; no Node build is needed.
+  build: {node_artifact: local-dist, artifact_path: /hotel_mcp/web}
 
 services:
   hotel:
