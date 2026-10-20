@@ -27,7 +27,7 @@
 
 ## 2026-10-20：受控部署 / MySQL 8
 
-部署目标 `https://mcp-hotel.yingzeai.com/admin/`，GitLab `https://gitlab.leyingiot.com/yingze/mcp-hotel.git`，分支 `release_20261020`。使用根目录 `docker-compose.coolify.yml`，RDS 的五项 `DB_*` 变量由平台自动生成，无需提交连接密码。操作步骤、初始化规则、备份和验收见 [部署文档](docs/deployment.md)。已部署并通过公网 HTTPS 健康检查，当前运行代码提交 `7d6e18b`（含前台与经营管理页面接入配置）。
+部署目标 `https://mcp-hotel.yingzeai.com/admin/`，GitLab `https://gitlab.leyingiot.com/yingze/mcp-hotel.git`，分支 `release_20261020`。使用根目录 `docker-compose.coolify.yml`，RDS 的五项 `DB_*` 变量由平台自动生成，无需提交连接密码。操作步骤、初始化规则、备份和验收见 [部署文档](docs/deployment.md)。已部署并通过公网 HTTPS 健康检查，当前运行代码提交 `5a95a64`（含经营管理接入及统一对外营业台账口径）。
 
 本地默认 SQLite 保持兼容；部署入口显式选择 MySQL 8.0.16+，不读取或迁移本机运行数据。首次准备五家门店（中心、江畔、机场、湖畔、会展）、最近30天600条营业订单、10个入住和25张业务工单；重复部署不会重置处理结果或凭据。按客户最新要求，线上门店和页面采用正常业务名称，内部仍记录模拟来源；销售不与工单自动结算。早期章节的“演示”标签描述本地样例历史规则。
 
@@ -102,7 +102,7 @@ Umami 接入默认关闭。仅私有配置 `analytics` 的 `enabled=true`、`env
 
 ## 多门店销售演示
 
-销售数据使用独立的模拟已结算订单，所有结果都有 `is_demo:true / data_source:demo / display_notice`，智能体展示或播报时必须说明“演示数据”，不可描述为实际营业收入。一条模拟订单只属于一家店和一个业务分类；销售额为订单金额之和，订单数为订单条数，人民币整数分。当前没有真实销售导入、退款或净收入模型；续房报价、确认和办理结果均不会自动计入销售。
+销售数据使用独立营业台账，初始化数据的模拟来源保留在内部；对外返回 `data_source:sales_ledger` 和中性金额口径，不主动播报演示标签，也不声称已对接真实财务系统。一条模拟订单只属于一家店和一个业务分类；销售额为订单金额之和，订单数为订单条数，人民币整数分。当前没有真实销售导入、退款或净收入模型；续房报价、确认和办理结果均不会自动计入销售。
 
 权限来自私有配置，工具参数不能扩大范围：
 
@@ -118,7 +118,7 @@ Umami 接入默认关闭。仅私有配置 `analytics` 的 `enabled=true`、`env
 | `hotel_resolve_entities` | 必填 `query`；可选 `entity_type=store` | 解析状态、候选门店、澄清问题、唯一确定时的 `resolved_id` |
 | `hotel_query_sales` | 必填 `date_from/date_to`；可选 `hotel_ids/category` | `totals`、`by_store`、`by_category`、`daily_trend` |
 
-`date_from/date_to` 为 `YYYY-MM-DD`，按上海时区的酒店营业日期统计，包含首尾，最长366天。`hotel_ids` 省略即查询全部授权且已配置门店，传一个 ID 即切换单店；指定列表必须非空、不重复且全部已授权，混入未授权门店整体拒绝。`category` 为 `accommodation`（住宿）、`dining`（餐饮）、`gym`（健身）、`meeting_room`（会议）。这些销售分类仅供演示，不表示对应工单业务已经开发完成。
+`date_from/date_to` 为 `YYYY-MM-DD`，按上海时区的酒店营业日期统计，包含首尾，最长366天。`hotel_ids` 省略即查询全部授权且已配置门店，传一个 ID 即切换单店；指定列表必须非空、不重复且全部已授权，混入未授权门店整体拒绝。`category` 为 `accommodation`（住宿）、`dining`（餐饮）、`gym`（健身）、`meeting_room`（会议）。销售分类与服务工单分别维护，工单状态不自动生成收入。
 
 各组指标为 `sales_amount_minor / order_count`；门店按销售额倒序排列，同额按 ID 排序；每日趋势按日期升序并补零。日期内没有数据时返回零值，门店、分类和日期维度仍保留；授权门店尚未配置时列表为空，显式指定该店则返回 `NOT_FOUND`。上述查询与解析工具均为只读，不需要 `request_key`，不生成通知事件或共享的“当前门店”状态。
 
