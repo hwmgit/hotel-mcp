@@ -67,22 +67,28 @@ class Connections:
                 urls.add(mark)
                 self.status[key] = {"state": "stopped"}
 
+    @staticmethod
+    def can_manage(actor, target):
+        if actor.role == "manager":
+            return target.role == "manager" and target.principal_id == actor.principal_id
+        return actor.role == "frontdesk" and target.hotel == actor.hotel and target.role in ("room", "frontdesk")
+
     def authorize(self, actor, target=None):
-        if actor.role != "frontdesk":
-            fail("FORBIDDEN", "仅前台可管理本店 AI 接入配置")
+        if actor.role not in ("frontdesk", "manager"):
+            fail("FORBIDDEN", "仅前台或经营管理身份可管理 AI 接入配置")
         if not self.path:
             fail("FORBIDDEN", "当前实例未配置可持久化的配置文件路径")
         if target is not None:
             endpoint = self.endpoints.get(target)
-            if not endpoint or endpoint.principal.hotel != actor.hotel or endpoint.principal.role not in ("room", "frontdesk"):
-                fail("NOT_FOUND", "找不到本店可管理的业务身份")
+            if not endpoint or not self.can_manage(actor, endpoint.principal):
+                fail("NOT_FOUND", "找不到可管理的业务身份")
 
     def snapshot(self, actor):
         self.authorize(actor)
         rows = []
         for key, endpoint in self.endpoints.items():
             p = endpoint.principal
-            if p.hotel != actor.hotel or p.role not in ("room", "frontdesk"):
+            if not self.can_manage(actor, p):
                 continue
             record = self.records[key]
             parsed = urlsplit(record["url"]) if record["url"] else None

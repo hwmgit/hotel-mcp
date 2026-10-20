@@ -97,7 +97,7 @@ async def test_hot_save_test_replace_disable_restore_and_permissions(setting_ser
         assert duplicate.status_code == 400
         cross = await http.post(route("room-demo-airport-101"), headers=h, json=body(url))
         assert cross.status_code == 404
-        for actor in ("room-demo-central-101", "sales-manager"):
+        for actor in ("room-demo-central-101",):
             r = await http.get(f"/api/{actor}/connections", headers=headers(config, actor))
             assert r.status_code == 403
         assert (await http.get("/api/frontdesk-demo-central/connections")).status_code == 401
@@ -199,3 +199,45 @@ async def test_identity_named_test_uses_save_route(services):
     async with httpx.AsyncClient(transport=httpx.ASGITransport(app=app), base_url="http://test") as http:
         result = await http.post(route("test"), headers=headers(config), json=body(""))
         assert result.status_code == 200 and result.json()["saved"]
+
+@pytest.mark.asyncio
+async def test_manager_hot_connection_sales_and_scope(setting_server):
+    http, config, path, app, store = setting_server
+    actor = "sales-manager"
+    h = headers(config, actor)
+    endpoint = route(actor, actor)
+    listing = await http.get(f"/api/{actor}/connections", headers=h)
+    assert [x["id"] for x in listing.json()["connections"]] == [actor]
+    assert (await http.get(f"/api/{actor}/session", headers=h)).json()["capabilities"]["manage_connections"]
+    for target, owner in [("central-manager", actor), ("room-demo-central-101", actor),
+                          (actor, "central-manager"), (actor, "frontdesk-demo-central")]:
+        for suffix, payload in [("", body("")), ("/test", {})]:
+            assert (await http.post(route(target, owner)+suffix, headers=headers(config, owner), json=payload)).status_code == 404
+    received = asyncio.Queue()
+    async def peer(ws):
+        await received.put(ws)
+        await ws.wait_closed()
+    async with serve(peer, "127.0.0.1", 0) as server:
+        url = f"ws://127.0.0.1:{server.sockets[0].getsockname()[1]}/mcp/"
+        assert (await http.post(endpoint, headers=h, json=body(url))).status_code == 200
+        ws = await asyncio.wait_for(received.get(), 3)
+        await ws.send(json.dumps({"jsonrpc":"2.0","id":1,"method":"initialize","params":{
+            "protocolVersion":"2024-11-05","capabilities":{},"clientInfo":{"name":"manager-test","version":"1"}}}))
+        await asyncio.wait_for(ws.recv(), 3)
+        await ws.send(json.dumps({"jsonrpc":"2.0","method":"notifications/initialized"}))
+        async def rpc(i, method, params=None):
+            await ws.send(json.dumps({"jsonrpc":"2.0","id":i,"method":method,**({"params":params} if params else {})}))
+            return json.loads(await asyncio.wait_for(ws.recv(),3))["result"]
+        tools = await rpc(2,"tools/list")
+        assert {t["name"] for t in tools["tools"]} == {"hotel_list_stores","hotel_query_sales","hotel_resolve_entities"}
+        result = await rpc(3,"tools/call",{"name":"hotel_list_stores","arguments":{}})
+        stores = json.loads(result["content"][0]["text"])["stores"]
+        allowed = next(p["allowed_hotels"] for p in config["principals"] if p["id"]==actor)
+        assert {s["hotel"] for s in stores} == set(allowed)
+        result = await rpc(4,"tools/call",{"name":"hotel_query_sales","arguments":{
+            "date_from":min(s["available_from"] for s in stores),"date_to":max(s["available_to"] for s in stores)}})
+        sales = json.loads(result["content"][0]["text"])
+        assert set(sales["hotel_ids"]) == set(allowed) and sales["totals"]["order_count"] > 0
+        assert (await http.post(endpoint+"/test",headers=h,json={})).json()["ok"]
+        assert (await http.post(endpoint,headers=h,json=body("",1,"disable"))).status_code == 200
+        await asyncio.wait_for(ws.wait_closed(),3)

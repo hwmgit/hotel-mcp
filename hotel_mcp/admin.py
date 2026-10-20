@@ -33,7 +33,7 @@ def admin_routes(endpoints, config, connections):
                 p = endpoint.principal
                 return JSONResponse({"principal": {"id": p.principal_id, "role": p.role, "hotel": p.hotel, "room": p.room},
                                      "tools": [t.name for t in tools_for(p)],
-                                     "capabilities": {"manage_connections": p.role == "frontdesk" and connections.path is not None}},
+                                     "capabilities": {"manage_connections": p.role in ("frontdesk", "manager") and connections.path is not None}},
                                     headers=headers)
             raw = await request.body()
             if len(raw) > 65536:
