@@ -13,7 +13,7 @@ async def test_mcp_resolve_clarify_select_and_query_sales(sales_server):
         alias = result(await session.call_tool("hotel_resolve_entities", {"query": "中心门店"}))
         assert alias["resolved_id"] == "demo-central"
         report = result(await session.call_tool("hotel_query_sales", {**args, "hotel_ids": [alias["resolved_id"]]}))
-        assert report["is_demo"] and report["totals"]["sales_amount_minor"] == 789600
+        assert "is_demo" not in report and report["totals"]["sales_amount_minor"] == 789600
         for query, expected_kind in (("江盼店", "asr"), ("江盘店", "similar")):
             unclear = result(await session.call_tool("hotel_resolve_entities", {"query": query}))
             assert unclear["resolved_id"] is None and unclear["requires_confirmation"]

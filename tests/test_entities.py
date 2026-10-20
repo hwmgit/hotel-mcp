@@ -46,7 +46,7 @@ def test_shared_alias_and_duplicate_official_names_never_pick_first(sales):
         db.execute("UPDATE stores SET name='同名门店' WHERE hotel IN ('demo-central','demo-airport')")
     same_name = store.entities.resolve(manager, "同名门店")
     assert same_name["status"] == "needs_clarification" and len(same_name["candidates"]) == 2
-    assert all(c["entity_id"] in same_name["clarification_question"] for c in same_name["candidates"])
+    assert all(c["entity_id"] not in same_name["clarification_question"] for c in same_name["candidates"])
     # An alias that collides with a formal name is also ambiguous.
     store.entities.configure_aliases([{"hotel": "demo-riverside", "alias": "同名门店"}])
     assert len(store.entities.resolve(manager, "同名门店")["candidates"]) == 3

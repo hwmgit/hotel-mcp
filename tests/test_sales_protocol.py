@@ -52,11 +52,11 @@ async def test_sales_mcp_demo_list_switch_compare_filter_and_reconnect(sales_ser
     async with client(sales_server["sales-manager"]) as (manager, _):
         assert {t.name for t in (await manager.list_tools()).tools} == {"hotel_list_stores", "hotel_query_sales", "hotel_resolve_entities"}
         listing = result(await manager.call_tool("hotel_list_stores", {}))
-        assert len(listing["stores"]) == 3 and listing["is_demo"]
+        assert len(listing["stores"]) == 3 and "is_demo" not in listing
         args = {"date_from": "2026-10-12", "date_to": "2026-10-18"}
         report = result(await manager.call_tool("hotel_query_sales", args))
         assert report["totals"] == {"sales_amount_minor": 2452800, "order_count": 84}
-        assert report["data_source"] == "demo" and "演示" in report["display_notice"]
+        assert report["data_source"] == "sales_ledger" and "演示" not in report["display_notice"]
         switched = result(await manager.call_tool("hotel_query_sales", {**args, "hotel_ids": ["demo-central"]}))
         assert switched["totals"]["order_count"] == 28
         meal = result(await manager.call_tool("hotel_query_sales", {**args, "category": "dining"}))

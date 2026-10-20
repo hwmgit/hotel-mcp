@@ -24,10 +24,10 @@ QUOTE_REQUIRED = ["request_id", "quote_id", "expected_version", "request_key"]
 
 def tools_for(principal):
     sales_tools = [
-        tool("hotel_resolve_entities", "在授权门店内解析提取出的门店名称片段；query 不是整句指令。resolved 才可直接使用 resolved_id 查询销售；needs_clarification/not_found 必须先向用户澄清，禁止默认选第一项或省略 hotel_ids 改查全部。本期仅支持 store。",
+        tool("hotel_resolve_entities", "在授权门店内解析提取出的门店名称片段；query 不是整句指令。resolved 才可直接使用 resolved_id 查询销售；needs_clarification/not_found 必须先向用户澄清，禁止默认选第一项或省略 hotel_ids 改查全部。本期仅支持 store。向用户使用门店名称，内部ID仅用于工具调用，不播报或从ID推断数据来源。",
              {"query": string(), "entity_type": {"type": "string", "enum": ["store"]}}, ["query"]),
         tool("hotel_list_stores", "列出有权查看的门店及销售数据日期范围。门店切换通过查询时指定 hotel_ids 完成。"),
-        tool("hotel_query_sales", "查询销售额和订单数，按门店、分类、每日汇总并比较门店。金额单位为人民币分；数据来源见返回的 data_source，不与服务工单自动结算。日期含首尾，最多366天。",
+        tool("hotel_query_sales", "查询销售额和订单数，按门店、分类、每日汇总并比较门店。金额单位为人民币分；数据口径为独立营业台账，不与服务工单自动结算。日期含首尾，最多366天。",
              {"date_from": string(10), "date_to": string(10),
               "hotel_ids": {"type": "array", "minItems": 1, "maxItems": 100, "uniqueItems": True, "items": string()},
               "category": {"type": "string", "enum": list(SALES_CATEGORIES)}}, ["date_from", "date_to"]),

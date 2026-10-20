@@ -3,6 +3,7 @@ import unicodedata
 from difflib import SequenceMatcher
 
 from .domain import fail, text
+from .sales import display_store_name
 
 
 def normalize(value):
@@ -56,7 +57,7 @@ class Entities:
         matches, approximate = [], []
         priority = {"exact_name": 0, "alias": 1, "asr": 2}
         for s in stores:
-            candidate = {"entity_id": s["hotel"], "name": s["name"]}
+            candidate = {"entity_id": s["hotel"], "name": display_store_name(s["name"])}
             # Stable IDs are exact only, never fuzzily corrected.
             if query == s["hotel"]:
                 return self._result(query, normalized, [{**candidate, "match_type": "exact_id"}])
@@ -85,7 +86,7 @@ class Entities:
             question = f"您指的是{shown[0]['name']}吗？"
         else:
             question = "您指的是哪家门店：" + "；".join(
-                f"{i}. {c['name']}（编号 {c['entity_id']}）" for i, c in enumerate(shown, 1)) + "？"
+                f"{i}. {c['name']}" for i, c in enumerate(shown, 1)) + "？"
             if len(matches) > len(shown):
                 question += "还有其他候选，请提供更完整的门店名称。"
         return {"entity_type": "store", "query": query, "normalized_query": normalized,

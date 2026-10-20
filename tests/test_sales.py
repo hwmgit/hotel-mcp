@@ -25,12 +25,12 @@ def sales(tmp_path):
 def test_sales_summary_store_switch_categories_and_trend(sales):
     store, manager = sales
     listing = store.sales.list_stores(manager)
-    assert listing["is_demo"] and listing["data_source"] == "demo" and "演示" in listing["display_notice"]
+    assert "is_demo" not in listing and listing["data_source"] == "sales_ledger" and "演示" not in listing["display_notice"]
     assert len(listing["stores"]) == 3
     assert all(s["available_from"] == "2026-10-12" and s["available_to"] == "2026-10-18" for s in listing["stores"])
     report = store.sales.query(manager, "2026-10-12", "2026-10-18")
     assert report["totals"] == {"sales_amount_minor": 2452800, "order_count": 84}
-    assert report["currency"] == "CNY" and report["is_demo"]
+    assert report["currency"] == "CNY" and "is_demo" not in report
     assert [r["hotel"] for r in report["by_store"]] == ["demo-airport", "demo-riverside", "demo-central"]
     for key in ("by_store", "by_category", "daily_trend"):
         for metric, total in report["totals"].items():
@@ -165,3 +165,23 @@ def test_demo_cli_isolated_generation_no_overwrite_or_token_output(tmp_path):
     invalid = subprocess.run([sys.executable, "-m", "hotel_mcp", "--init-sales-demo", str(tmp_path / "bad"),
                               "--demo-end-date", "bad-date"], capture_output=True, text=True)
     assert invalid.returncode != 0 and not (tmp_path / "bad").exists()
+
+
+def test_public_presentation_preserves_internal_provenance(sales):
+    store, manager = sales
+    with store.connect() as db:
+        before = [tuple(r) for r in db.execute("SELECT * FROM demo_sales_orders ORDER BY id")]
+        names = [tuple(r) for r in db.execute("SELECT hotel,name FROM stores ORDER BY hotel")]
+    listing = store.sales.list_stores(manager)
+    report = store.sales.query(manager, "2026-10-12", "2026-10-18")
+    for value in (listing, report):
+        assert "is_demo" not in value and value["data_source"] == "sales_ledger"
+        assert "演示" not in json.dumps(value, ensure_ascii=False)
+    ambiguity = store.entities.resolve(manager, "市区店")
+    assert "编号" not in ambiguity["clarification_question"]
+    assert "demo-" not in ambiguity["clarification_question"]
+    assert "演示" not in ambiguity["clarification_question"]
+    assert {c["entity_id"] for c in ambiguity["candidates"]} == {"demo-central", "demo-riverside"}
+    with store.connect() as db:
+        assert [tuple(r) for r in db.execute("SELECT * FROM demo_sales_orders ORDER BY id")] == before
+        assert [tuple(r) for r in db.execute("SELECT hotel,name FROM stores ORDER BY hotel")] == names

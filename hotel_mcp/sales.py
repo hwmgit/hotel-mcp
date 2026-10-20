@@ -1,4 +1,4 @@
-"""Read-only, explicitly labelled demo sales; no PMS/payment/platform integration."""
+"""Read-only sales presentation; internal seed provenance remains unchanged."""
 from datetime import date, timedelta
 
 from .domain import fail
@@ -7,6 +7,11 @@ from .domain import fail
 SALES_CATEGORIES = ("accommodation", "dining", "gym", "meeting_room")
 DEMO_LABEL = {"data_source": "demo", "is_demo": True, "currency": "CNY",
               "display_notice": "演示数据：模拟已结算订单，非实际营业收入；金额单位为人民币分。"}
+
+
+def display_store_name(name):
+    """Hide legacy seed display suffix without rewriting stored names or IDs."""
+    return name.removesuffix("（演示）")
 
 
 def business_date(value, field):
@@ -24,9 +29,8 @@ class Sales:
 
     @property
     def label(self):
-        if self.store.is_mysql:
-            return {**DEMO_LABEL, "display_notice": "营业台账，金额单位为人民币分。"}
-        return DEMO_LABEL
+        return {"data_source": "sales_ledger", "currency": "CNY",
+                "display_notice": "营业台账，金额单位为人民币分。"}
 
     @staticmethod
     def _scope(p):
@@ -49,7 +53,7 @@ class Sales:
             for row in self._stores(db, hotels):
                 span = db.execute("SELECT MIN(business_date),MAX(business_date) FROM demo_sales_orders WHERE hotel=?",
                                   (row["hotel"],)).fetchone()
-                stores.append({**dict(row), "available_from": span[0], "available_to": span[1]})
+                stores.append({**dict(row), "name": display_store_name(row["name"]), "available_from": span[0], "available_to": span[1]})
         return {**self.label, "stores": stores}
 
     def query(self, p, date_from, date_to, hotel_ids=None, category=None):
@@ -88,7 +92,7 @@ class Sales:
             return {**labels, "sales_amount_minor": 0, "order_count": 0}
 
         totals = metrics()
-        by_store = {r["hotel"]: metrics(**dict(r)) for r in stores}
+        by_store = {r["hotel"]: metrics(**{**dict(r), "name": display_store_name(r["name"])}) for r in stores}
         by_category = {c: metrics(category=c) for c in ((category,) if category else SALES_CATEGORIES)}
         trend = {str(start + timedelta(days=i)): metrics(date=str(start + timedelta(days=i)))
                  for i in range((end - start).days + 1)}

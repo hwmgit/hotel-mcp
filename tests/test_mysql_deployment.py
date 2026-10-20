@@ -124,7 +124,7 @@ def test_mysql_seed_five_stores_repeat_preserves_data_and_credentials(mysql_demo
     assert len(stores) == 5
     assert all("演示" not in s["name"] for s in stores)
     sales = store.sales.query(manager, stores[0]["available_from"], stores[0]["available_to"])
-    assert sales["is_demo"] and sales["totals"]["order_count"] == 600
+    assert "is_demo" not in sales and sales["totals"]["order_count"] == 600
     assert all(s["order_count"] == 120 and s["sales_amount_minor"] > 0 for s in sales["by_store"])
     assert isinstance(sales["totals"]["sales_amount_minor"], int)
     guest, desk = principal("room-demo-central-101"), principal("frontdesk-demo-central")
