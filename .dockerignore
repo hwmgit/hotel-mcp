@@ -1,4 +1,8 @@
 **
 !hotel_mcp/
 !hotel_mcp/*.py
+!hotel_mcp/web/
+!hotel_mcp/web/*.html
+!hotel_mcp/web/*.css
+!hotel_mcp/web/*.js
 !requirements.txt

@@ -24,6 +24,11 @@ async def hotel(tmp_path):
         {"id": "neighbor", "hotel": "hotel-a", "role": "room", "room": "102", "token": "n" * 40},
         {"id": "other", "hotel": "hotel-b", "role": "frontdesk", "token": "o" * 40},
     ]
+    store = HotelStore(tmp_path / "hotel.db")
+    store.configure_rooms([{"hotel": "hotel-a", "room": number} for number in ("101", "102", "103")])
+    for row in principals:
+        if row["role"] == "room":
+            row["stay_id"] = store.start_stay(Principal(row["hotel"], "frontdesk"), row["room"], "2099-01-01", row["id"])["stay"]["id"]
     app = create_app({"principals": principals}, tmp_path / "hotel.db")
     sock = socket.socket()
     sock.bind(("127.0.0.1", 0))
@@ -139,7 +144,10 @@ async def test_failed_delivery_retains_cursor(hotel, tmp_path):
 def test_transaction_idempotency_state_machine_and_pagination(tmp_path):
     path = tmp_path / "hotel.db"
     store = HotelStore(path)
-    room, desk = Principal("a", "room", "101"), Principal("a", "frontdesk")
+    desk = Principal("a", "frontdesk")
+    store.configure_rooms([{"hotel": "a", "room": "101"}])
+    stay = store.start_stay(desk, "101", "2099-01-01", "check-in")["stay"]
+    room = Principal("a", "room", "101", stay["id"])
     first = store.submit(room, "one", "送水")
     assert HotelStore(path).submit(room, "one", "送水")["id"] == first["id"]
     with pytest.raises(ValueError):

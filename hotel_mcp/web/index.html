@@ -1,0 +1,15 @@
+<!doctype html>
+<html lang="zh-CN">
+<head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><meta name="referrer" content="no-referrer"><title>泊云 · 酒店服务工作台</title><link rel="stylesheet" href="/admin/assets/style.css"><script src="/admin/assets/app.js" defer></script></head>
+<body>
+<section id="login" class="login-page">
+  <div class="welcome"><div class="brand"><span class="brandmark">泊</span><span>泊云 <small>HOTEL SERVICES</small></span></div><p class="eyebrow">更从容地回应每一次需要</p><h1>客房的每个请求，<br>前台都能看见。</h1><p class="lead">从一份早餐，到一场会议。<br>让服务有回应，让进度看得见。</p><div class="journey"><span>01 客房 AI 发起</span><span>02 前台确认处理</span><span>03 结果反馈客房</span></div><div class="welcome-art" aria-hidden="true"><div class="art-window"></div><div class="art-desk"></div><span class="art-label">SERVICE, WITH CARE.</span></div></div>
+  <div class="login-panel"><div class="login-box"><p class="eyebrow">欢迎来到服务工作台</p><h2>登录您的工作空间</h2><p class="muted">使用本地配置中的入口编号与访问凭据。</p><form id="login-form"><label>入口编号<input name="principal" placeholder="例如 frontdesk-demo-central" autocomplete="username" required maxlength="64"></label><label>访问凭据<input name="token" type="password" placeholder="粘贴该入口的独立访问凭据" autocomplete="off" required></label><button class="primary wide" type="submit">进入工作台 <span>→</span></button><p id="login-error" class="error" role="alert"></p></form><p class="fine">凭据只保存在当前页面内存中。刷新或退出后需重新登录。</p><div class="login-tip"><strong>一台客房 AI，一张前台工作台</strong><p>客房通过 AI 提交需求，前台在这里受理、确认和记录结果。管理人员可查看各门店经营数据。</p></div></div></div>
+</section>
+<div id="workspace" hidden>
+  <aside class="sidebar"><div class="brand"><span class="brandmark">泊</span><span>泊云 <small>服务工作台</small></span></div><div class="nav-label">工作空间</div><nav id="nav" aria-label="主导航"></nav><div class="sidebar-footer"><div class="connection-dot"></div><span>酒店业务服务<br><small>客房 AI × 前台工作台</small></span></div></aside>
+  <div class="main"><header class="topbar"><span id="breadcrumb">工作概览</span><div class="identity"><span id="identity"></span><button id="logout" class="quiet">退出</button></div></header><main id="content" tabindex="-1"></main><footer>泊云 · 每一项服务，清晰可见 <span id="updated"></span></footer></div>
+</div>
+<dialog id="detail"><div class="dialog-head"><div><p class="eyebrow">服务工单</p><h2 id="detail-title"></h2></div><button id="close-detail" class="quiet" aria-label="关闭详情">✕</button></div><div id="detail-body"></div></dialog>
+<div id="toast" role="status" aria-live="polite" hidden></div>
+</body></html>

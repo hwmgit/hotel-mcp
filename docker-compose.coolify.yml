@@ -1,0 +1,51 @@
+x-hzyz-deploy:
+  schema_version: "1"
+  application:
+    code: hotel-mcp
+    name: 酒店业务服务
+    type: rds
+  # Confirm domain availability in the platform preflight before creating the app.
+  domains: [mcp-hotel.yingzeai.com]
+  healthcheck: {service: hotel, path: /health, expected_status: 200}
+  database:
+    enabled: true
+    name_prefix: hotel_mcp
+    migration_command: python -m hotel_mcp.deployment prepare
+  environment:
+    variables:
+      - {name: DB_HOST, sensitive: false, source: generated}
+      - {name: DB_PORT, sensitive: false, source: generated}
+      - {name: DB_DATABASE, sensitive: false, source: generated}
+      - {name: DB_USERNAME, sensitive: false, source: generated}
+      - {name: DB_PASSWORD, sensitive: true, source: generated}
+  persistence:
+    volumes:
+      - {name: hotel-private, target: /data}
+  resources: {cpu_limit: "1.00", memory_limit: 512M}
+  build: {node_artifact: none}
+
+services:
+  hotel:
+    build: .
+    restart: unless-stopped
+    command: ["python", "-m", "hotel_mcp.deployment", "serve"]
+    expose: ["8120"]
+    environment:
+      DB_HOST: ${DB_HOST:?Platform DB_HOST is required}
+      DB_PORT: ${DB_PORT:?Platform DB_PORT is required}
+      DB_DATABASE: ${DB_DATABASE:?Platform DB_DATABASE is required}
+      DB_USERNAME: ${DB_USERNAME:?Platform DB_USERNAME is required}
+      DB_PASSWORD: ${DB_PASSWORD:?Platform DB_PASSWORD is required}
+    volumes: [hotel-private:/data]
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8120/health', timeout=4)"]
+      interval: 30s
+      timeout: 5s
+      retries: 5
+      start_period: 90s
+    deploy:
+      resources:
+        limits: {cpus: "1.00", memory: 512M}
+
+volumes:
+  hotel-private:
