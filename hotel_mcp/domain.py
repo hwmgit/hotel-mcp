@@ -72,8 +72,17 @@ class Principal:
     stay_id: str = ""
     principal_id: str = ""
     allowed_hotels: tuple[str, ...] = ()
+    account_id: str = ""
+    auth_version: int = 0
+    history_readonly: bool = False
+    account_role: str = ""
+    agent_type: str = ""
+    request_types: tuple[str, ...] = ()
 
     def __post_init__(self):
+        if self.request_types and (self.role != "frontdesk" or not isinstance(self.request_types, tuple)
+                                   or any(kind not in REQUEST_TYPES for kind in self.request_types)):
+            raise ValueError("request type scope requires a staff agent and known business types")
         if self.role == "manager":
             if (self.hotel or self.room or self.stay_id or not isinstance(self.allowed_hotels, tuple)
                     or not 1 <= len(self.allowed_hotels) <= 100

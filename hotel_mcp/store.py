@@ -74,6 +74,22 @@ class HotelStore:
 
     @staticmethod
     def _authorize(db, p):
+        if p.account_id:
+            account = db.execute("SELECT enabled,auth_version FROM accounts WHERE id=?", (p.account_id,)).fetchone()
+            if not account or not account["enabled"] or account["auth_version"] != p.auth_version:
+                fail("UNAUTHORIZED", "登录已失效，请重新登录")
+            if p.role == "room" and not db.execute(
+                    "SELECT 1 FROM account_stays WHERE account_id=? AND stay_id=?",
+                    (p.account_id, p.stay_id)).fetchone():
+                fail("FORBIDDEN", "无权访问此入住记录")
+        if p.history_readonly:
+            if not p.account_id or p.role != "room":
+                fail("FORBIDDEN", "历史查询需要客户账号")
+            row = db.execute("SELECT * FROM stays WHERE id=? AND hotel=? AND room=?",
+                             (p.stay_id, p.hotel, p.room)).fetchone()
+            if not row:
+                fail("NOT_FOUND", "入住记录不存在")
+            return row
         if p.role == "manager":
             fail("FORBIDDEN", "管理身份仅可查询授权门店销售数据")
         if p.role == "frontdesk":
@@ -94,8 +110,13 @@ class HotelStore:
     @staticmethod
     def _scope(p):
         if p.role == "frontdesk":
-            return "hotel=?", [p.hotel]
-        return "hotel=? AND room=? AND stay_id=?", [p.hotel, p.room, p.stay_id]
+            scope, args = "hotel=?", [p.hotel]
+        else:
+            scope, args = "hotel=? AND room=? AND stay_id=?", [p.hotel, p.room, p.stay_id]
+        if p.request_types:
+            scope += " AND request_type IN (" + ",".join("?" for _ in p.request_types) + ")"
+            args.extend(p.request_types)
+        return scope, args
 
     def _find(self, db, p, request_id):
         scope, args = self._scope(p)
@@ -120,6 +141,8 @@ class HotelStore:
         return value
 
     def _write(self, p, operation, request_key, payload, perform):
+        if p.history_readonly:
+            fail("FORBIDDEN", "已退房的入住记录仅可查询")
         request_key = text(request_key, "request_key", 80)
         digest = hashlib.sha256(canonical(payload).encode()).hexdigest()
         stay_scope = p.stay_id if p.role == "room" else ""
@@ -132,7 +155,12 @@ class HotelStore:
             if receipt:
                 if receipt["payload_hash"] != digest:
                     fail("IDEMPOTENCY_CONFLICT", "request_key 已用于其他参数，请勿覆盖原操作")
-                return {**json.loads(receipt["response_json"]), "replayed": True}
+                result = json.loads(receipt["response_json"])
+                # A named agent may have changed capabilities since this write.
+                # Replaying a receipt must not disclose a now-inaccessible ticket.
+                if p.request_types and "request" in result:
+                    self._find(db, p, result["request"]["id"])
+                return {**result, "replayed": True}
             result = perform(db)
             result.setdefault("replayed", False)
             db.execute("INSERT INTO operation_receipts VALUES(?,?,?,?,?,?,?,?)",
@@ -331,7 +359,10 @@ class HotelStore:
             fail("VALIDATION_ERROR", "limit 必须为1～50")
 
     def _cursor_context(self, p, kind, filters):
-        return hashlib.sha256(canonical([p.hotel, p.role, p.room, p.stay_id, p.actor_id, kind, filters]).encode()).hexdigest()
+        context = [p.hotel, p.role, p.room, p.stay_id, p.actor_id, kind, filters]
+        if p.request_types:
+            context.append(p.request_types)
+        return hashlib.sha256(canonical(context).encode()).hexdigest()
 
     def _encode_cursor(self, context, upper, last):
         raw = canonical({"context": context, "upper": upper, "last": last}).encode()
@@ -420,11 +451,7 @@ class HotelStore:
             fail("VALIDATION_ERROR", "无效事件游标")
         with self.connect() as db:
             self._authorize(db, p)
-            scope = "hotel=? AND role=? AND room=?"
-            args = [p.hotel, p.role, p.room]
-            if p.role == "room":
-                scope += " AND stay_id=?"
-                args.append(p.stay_id)
+            scope, args = self._event_scope(p)
             rows = db.execute(f"SELECT seq,payload FROM events WHERE {scope} AND seq>? ORDER BY seq LIMIT 51", (*args, after)).fetchall()
         events = [{**json.loads(row["payload"]), "seq": row["seq"], "event_id": f"hotel-{row['seq']}"} for row in rows[:50]]
         return {"events": events, "next_cursor": events[-1]["seq"] if events else after, "has_more": len(rows) > 50}
@@ -432,8 +459,17 @@ class HotelStore:
     def latest_event_seq(self, p):
         with self.connect() as db:
             self._authorize(db, p)
-            query, args = "SELECT COALESCE(MAX(seq),0) FROM events WHERE hotel=? AND role=? AND room=?", [p.hotel, p.role, p.room]
-            if p.role == "room":
-                query += " AND stay_id=?"
-                args.append(p.stay_id)
+            scope, args = self._event_scope(p)
+            query = "SELECT COALESCE(MAX(seq),0) FROM events WHERE " + scope
             return db.execute(query, args).fetchone()[0]
+
+    def _event_scope(self, p):
+        scope, args = "hotel=? AND role=? AND room=?", [p.hotel, p.role, p.room]
+        if p.role == "room":
+            scope += " AND stay_id=?"
+            args.append(p.stay_id)
+        if p.request_types:
+            field = "JSON_UNQUOTE(JSON_EXTRACT(payload,'$.request_type'))" if self.is_mysql else "json_extract(payload,'$.request_type')"
+            scope += " AND " + field + " IN (" + ",".join("?" for _ in p.request_types) + ")"
+            args.extend(p.request_types)
+        return scope, args

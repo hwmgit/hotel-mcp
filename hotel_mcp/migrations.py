@@ -4,7 +4,7 @@ import sqlite3
 
 
 # Keep the v2 definition immutable so old databases follow the same upgrade path.
-SCHEMA_VERSION = 6
+SCHEMA_VERSION = 7
 SCHEMA = """
 CREATE TABLE IF NOT EXISTS schema_migrations (
     version INTEGER PRIMARY KEY, applied_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP);
@@ -196,10 +196,10 @@ def ensure_schema(db, allow_upgrade=False):
     current = db.execute("SELECT MAX(version) FROM schema_migrations").fetchone()[0] if "schema_migrations" in tables else None
     if current == SCHEMA_VERSION:
         return
-    if current not in (None, 2, 3, 4, 5):
+    if current not in (None, 2, 3, 4, 5, 6):
         raise ValueError(f"unsupported database schema version: {current}")
     legacy = "requests" in tables and current is None
-    if (legacy or current in (2, 3, 4, 5)) and not allow_upgrade:
+    if (legacy or current in (2, 3, 4, 5, 6)) and not allow_upgrade:
         raise ValueError("legacy database requires explicit --migrate; back up and stop its writer first")
     db.execute("PRAGMA foreign_keys=OFF")
     try:
@@ -226,7 +226,12 @@ def ensure_schema(db, allow_upgrade=False):
         if current in (None, 2, 3, 4):
             _execute_schema(db, ENTITY_SCHEMA)
             db.execute("INSERT INTO schema_migrations(version) VALUES(5)")
-        _upgrade_v6(db)
+        if current != 6:
+            _upgrade_v6(db)
+        from .account_schema import ACCOUNT_SCHEMA
+        for statement in ACCOUNT_SCHEMA:
+            db.execute(statement)
+        db.execute("INSERT INTO schema_migrations(version) VALUES(7)")
         if db.execute("PRAGMA foreign_key_check").fetchone():
             raise sqlite3.IntegrityError("foreign key check failed during migration")
         db.commit()

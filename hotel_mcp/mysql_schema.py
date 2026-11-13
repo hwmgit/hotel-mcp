@@ -6,9 +6,10 @@ import sqlite3
 import pymysql
 
 from .mysql import raw_connect
+from .account_schema import ACCOUNT_SCHEMA
 
 
-VERSION = 6
+VERSION = 7
 SCHEMA = [
 """CREATE TABLE IF NOT EXISTS service_metadata (
  `key` VARCHAR(80) PRIMARY KEY, value LONGTEXT NOT NULL)""",
@@ -171,9 +172,9 @@ def ensure_schema(allow_upgrade=False):
                 if "schema_migrations" in tables:
                     c.execute("SELECT MAX(version) FROM schema_migrations")
                     current = c.fetchone()[0]
-                    if current not in (None, VERSION):
+                    if current not in (None, 6, VERSION):
                         raise ValueError("Unsupported MySQL schema version")
-            for index, statement in enumerate(SCHEMA):
+            for index, statement in enumerate([*SCHEMA, *ACCOUNT_SCHEMA]):
                 stage = f"table-{index}"
                 c.execute(statement + " ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_bin")
                 if index == 0:

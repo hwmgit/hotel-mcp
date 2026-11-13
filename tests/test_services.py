@@ -187,7 +187,7 @@ def test_frozen_v5_migration_data_integrity_highwater_and_rollback(tmp_path, mon
         HotelStore(path, migrate=True)
         HotelStore(path, migrate=True)
     with sqlite3.connect(path) as db:
-        assert db.execute("SELECT MAX(version) FROM schema_migrations").fetchone()[0] == (5 if broken else 6)
+        assert db.execute("SELECT MAX(version) FROM schema_migrations").fetchone()[0] == (5 if broken else 7)
         assert before == {t: db.execute(f'SELECT * FROM "{t}"').fetchall() for t in tables}
         assert not db.execute("PRAGMA foreign_key_check").fetchall()
         assert db.execute("PRAGMA integrity_check").fetchone()[0] == "ok"

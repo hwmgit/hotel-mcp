@@ -162,7 +162,8 @@ def create_app(config, database, *, config_path=None, allow_local_mcp=False):
         routes.append(Route("/" + key + "/mcp", endpoint, methods=["GET", "POST", "DELETE"]))
 
     from .connections import Connections
-    connections = Connections(endpoints, config, config_path, allow_local_mcp)
+    connections = Connections(endpoints, config, config_path, allow_local_mcp, store=store,
+                              endpoint_factory=lambda principal: Endpoint(store, principal, "", publish))
     connection_status = connections.status
 
     @asynccontextmanager
@@ -187,6 +188,8 @@ def create_app(config, database, *, config_path=None, allow_local_mcp=False):
                              "mcp_connections": connection_status})
 
     from .admin import admin_routes
-    app = Starlette(routes=[Route("/health", health), *routes, *admin_routes(endpoints, config, connections)], lifespan=lifespan)
+    from .account_api import account_routes
+    app = Starlette(routes=[Route("/health", health), *routes, *admin_routes(endpoints, config, connections),
+                            *account_routes(store, publish, connections)], lifespan=lifespan)
     app.state.connections = connections
     return app

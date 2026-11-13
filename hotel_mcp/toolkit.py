@@ -23,6 +23,22 @@ QUOTE_REQUIRED = ["request_id", "quote_id", "expected_version", "request_key"]
 
 
 def tools_for(principal):
+    items = _role_tools(principal)
+    if not principal.agent_type:
+        return items
+    from .agent_profiles import AGENT_TYPES
+    profile = AGENT_TYPES.get(principal.agent_type)
+    if not profile:
+        return []
+    if profile["tools"] is not None:
+        items = [item for item in items if item.name in profile["tools"]]
+    if principal.role == "frontdesk":
+        items = [item for item in items if item.name not in {"hotel_list_stores", "hotel_query_sales", "hotel_resolve_entities",
+                                                            "hotel_accept_request", "hotel_complete_request"}]
+    return items
+
+
+def _role_tools(principal):
     sales_tools = [
         tool("hotel_resolve_entities", "在授权门店内解析提取出的门店名称片段；query 不是整句指令。resolved 才可直接使用 resolved_id 查询销售；needs_clarification/not_found 必须先向用户澄清，禁止默认选第一项或省略 hotel_ids 改查全部。本期仅支持 store。向用户使用门店名称，内部ID仅用于工具调用，不播报或从ID推断数据来源。",
              {"query": string(), "entity_type": {"type": "string", "enum": ["store"]}}, ["query"]),

@@ -7,9 +7,12 @@ import tempfile
 from pathlib import Path
 
 import uvicorn
+from websockets.asyncio.server import serve
 
 from hotel_mcp.demo import init_full_demo
 from hotel_mcp.server import create_app
+from hotel_mcp.accounts import Accounts
+from hotel_mcp.store import HotelStore
 
 
 async def preview(stop_file):
@@ -19,12 +22,16 @@ async def preview(stop_file):
         config = json.loads((root / "config.json").read_text(encoding="utf-8"))
         for row in config["principals"]:
             row["token"] = "test-only-" + row["id"] + "-" + "x" * 32
+        accounts = Accounts(HotelStore(root / "hotel.sqlite3"))
+        accounts.bootstrap("preview-admin", "preview-initial-password")
         app = create_app(config, root / "hotel.sqlite3", config_path=root / "config.json", allow_local_mcp=True)
         sock = socket.socket()
         sock.bind(("127.0.0.1", 0))
         print(f"Preview: http://127.0.0.1:{sock.getsockname()[1]}/admin/", flush=True)
         server = uvicorn.Server(uvicorn.Config(app, log_level="error", access_log=False, timeout_graceful_shutdown=2))
         task = asyncio.create_task(server.serve(sockets=[sock]))
+        peer = await serve(lambda ws: ws.wait_closed(), "127.0.0.1", 0)
+        print(f"Peer: ws://127.0.0.1:{peer.sockets[0].getsockname()[1]}/mcp/", flush=True)
         try:
             for _ in range(1800):
                 if stop_file.exists() or task.done():
@@ -33,6 +40,8 @@ async def preview(stop_file):
         finally:
             server.should_exit = True
             await task
+            peer.close()
+            await peer.wait_closed()
             sock.close()
 
 

@@ -339,7 +339,7 @@ def test_v2_upgrade_preserves_relationships_sequences_receipts_and_cursor_secret
     assert store.inbox(desk)["events"][-1]["seq"] > 200
     with store.connect() as db:
         assert db.execute("SELECT seq FROM requests WHERE id=?", (order["id"],)).fetchone()[0] > 100
-        assert db.execute("SELECT MAX(version) FROM schema_migrations").fetchone()[0] == 6
+        assert db.execute("SELECT MAX(version) FROM schema_migrations").fetchone()[0] == 7
         assert not db.execute("PRAGMA foreign_key_check").fetchall()
         assert db.execute("PRAGMA integrity_check").fetchone()[0] == "ok"
     HotelStore(path, migrate=True)

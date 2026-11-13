@@ -21,26 +21,26 @@ const empty = (title, note="新的服务请求会显示在这里。") => `<div c
 async function api(path, data) {
   const auth = state.auth;
   if (!auth) throw new Error("请先登录");
-  const response = await fetch(`/api/${encodeURIComponent(auth.id)}/${path}`, {method:data === undefined ? "GET" : "POST", headers:{Authorization:`Bearer ${auth.token}`, ...(data === undefined ? {} : {"Content-Type":"application/json"})}, ...(data === undefined ? {} : {body:JSON.stringify(data)})});
-  if (auth !== state.auth) throw new Error("身份已切换，请重新操作");
+  const response = await fetch(`/workspace/${path}`, {method:data === undefined ? "GET" : "POST", credentials:"same-origin", headers:{"X-Requested-With":"hotel-admin", "X-CSRF-Token":auth.csrf||"", "X-Hotel-ID":auth.hotel||"", "X-Stay-ID":auth.stay||"", ...(data === undefined ? {} : {"Content-Type":"application/json"})}, ...(data === undefined ? {} : {body:JSON.stringify(data)})});
+  if (auth !== state.auth) {const error=new Error("身份已切换，请重新操作");error.code="STALE_CONTEXT";throw error;}
   const value = await response.json();
-  if (!response.ok) {const error = new Error(value.message || "服务暂时不可用"); error.code = value.code; throw error;}
+  if (!response.ok) {const error = new Error(value.message || "服务暂时不可用"); error.code = value.code; if(response.status===401)clearLogin(error.message);throw error;}
   return value;
 }
 const call = (tool, args={}) => api(`tools/${tool}`, args);
 async function write(tool, args) {
-  const signature = `${state.auth.id}:${tool}:${JSON.stringify(args)}`;
+  const signature = `${state.auth.id}:${state.auth.hotel}:${state.auth.stay}:${tool}:${JSON.stringify(args)}`;
   if (!retryKeys.has(signature)) retryKeys.set(signature, crypto.randomUUID());
   const result = await call(tool, {...args, request_key:retryKeys.get(signature)});
   retryKeys.delete(signature);
   return result;
 }
 function nav() {
-  const all = [["overview","◫",role()==="room"?"我的服务":"工作概览",has("hotel_query_requests")], ["requests","▤","工单中心",has("hotel_query_requests")], ["meals","♧","餐饮服务",has("hotel_list_menu")], ["bookings","▦","场地预约",has("hotel_list_booking_slots")], ["sales","▥","经营数据",has("hotel_query_sales")], ["resolve","⌕","名称助手",has("hotel_resolve_entities")], ["connections","⇄","AI 接入配置",state.session?.capabilities?.manage_connections]];
+  const all = [["overview","◫",role()==="room"?"我的服务":"工作概览",has("hotel_query_requests")], ["requests","▤","工单中心",has("hotel_query_requests")], ["meals","♧","餐饮服务",has("hotel_list_menu")], ["bookings","▦","场地预约",has("hotel_list_booking_slots")], ["sales","▥","经营数据",has("hotel_query_sales")], ["resolve","⌕","名称助手",has("hotel_resolve_entities")], ["connections","⇄","AI 接入配置",state.session?.capabilities?.manage_connections], ["accounts","♙","账号管理",state.session?.capabilities?.manage_accounts], ["password","⚿","修改密码",true]];
   $("#nav").innerHTML = all.filter(x=>x[3]).map(([id,icon,label])=>`<button data-view="${id}" class="${state.view===id?"active":""}"><span class="nav-icon">${icon}</span>${label}</button>`).join("");
   $("#breadcrumb").textContent = all.find(x=>x[0]===state.view)?.[2] || "工作台";
 }
-function requestRows(rows,compact=false) {return rows.map(r=>`<tr><td><span class="room-number">${esc(r.room)}</span></td><td>${esc(kinds[r.request_type])}</td><td><span class="desc">${esc(r.description)}</span></td><td>${badge(r.status,r.request_type)}</td>${compact?"":`<td>${when(r.updated_at)}</td>`}<td><button class="link" data-detail="${esc(r.id)}">处理 →</button></td></tr>`).join("");}
+function requestRows(rows,compact=false) {return rows.map(r=>`<tr><td><span class="room-number">${esc(r.room)}</span></td><td>${esc(kinds[r.request_type])}</td><td><span class="desc">${esc(r.description)}</span></td><td>${badge(r.status,r.request_type)}</td>${compact?"":`<td>${when(r.updated_at)}</td>`}<td><button class="link" data-detail="${esc(r.id)}">${role()==="room"?"查看":"处理"} →</button></td></tr>`).join("");}
 function requestTable(rows,compact=false) {return rows.length ? `<div class="table-wrap"><table><thead><tr><th>客房</th><th>服务类型</th><th>需求内容</th><th>当前状态</th>${compact?"":"<th>最近更新</th>"}<th>操作</th></tr></thead><tbody>${requestRows(rows,compact)}</tbody></table></div>` : empty("暂时没有工单");}
 async function loadRequests(more=false, overview=false) {
   const args = {limit:50};
@@ -56,10 +56,11 @@ async function overview() {
   const rows = state.requests;
   const pending = rows.filter(r=>["pending","confirmed"].includes(r.status)).length;
   const active = rows.filter(r=>["accepted","processing"].includes(r.status)).length;
-  let content = pageHead(role()==="room"?"欢迎，您的客房服务":"让每一份需求，都有回应",role()==="room"?"提交需求，随时查看前台处理进度。":"客房 AI 发起需求 · 前台在此处理 · 结果通过业务事件反馈客房", `<button data-refresh>↻ 刷新工作台</button>`);
+  let content = pageHead(role()==="room"?(state.session.history_readonly?"您的历史服务记录":"欢迎，您的客房服务"):"让每一份需求，都有回应",role()==="room"?(state.session.history_readonly?"查看本次入住的工单与处理进度。":"提交需求，随时查看前台处理进度。"):"客房 AI 发起需求 · 前台在此处理 · 结果通过业务事件反馈客房", `<button data-refresh>↻ 刷新工作台</button>`);
+  if(state.session.history_readonly)content+=`<div class="notice">当前入住已退房，您仍可查询本次入住的历史工单与处理进度。</div>`;
   content += `<div class="stats">${[["待前台处理",pending,"待确认与待办理","◷"],["正在服务",active,"已受理或办理中","↗"],["服务已完成",rows.filter(r=>r.status==="completed").length,"当前加载工单范围","✓"],["服务工单",rows.length,"最近最多 50 张工单","▤"]].map(([label,num,help,icon])=>`<div class="stat"><span>${label}</span><i class="stat-icon">${icon}</i><strong>${num.toString().padStart(2,"0")}</strong><small>${help}</small></div>`).join("")}</div>`;
   content += `<div class="split"><div class="panel"><div class="panel-head"><h3>最近服务请求</h3><button class="link" data-view="requests">查看全部 →</button></div>${requestTable(rows.slice(0,6),true)}</div><div class="panel"><div class="panel-head"><h3>服务协同</h3><span class="tag">业务在线</span></div><div class="flow"><div class="flow-step"><span>01</span><div><b>客房 AI 接收需求</b><p>报障、续房、点餐与场地预约。</p></div></div><div class="flow-step"><span>02</span><div><b>前台确认并处理</b><p>核实费用、安排服务，确认预约时占用资源。</p></div></div><div class="flow-step"><span>03</span><div><b>结果反馈客房</b><p>处理记录留存，业务事件交由智能体通知。</p></div></div></div></div></div>`;
-  if (role()==="room") {
+  if (has("hotel_get_current_stay")) {
     const stay = (await call("hotel_get_current_stay")).stay;
     content += `<div class="grid"><section class="service-card"><h3>报修与帮助</h3><form id="repair-form"><label>故障分类<select name="category"><option value="air_conditioning">空调</option><option value="plumbing_electrical">水电</option><option value="network">网络</option><option value="door_lock">门锁</option><option value="facilities">设施</option><option value="other">其他</option></select></label><label>需要我们帮助什么？<textarea name="description" maxlength="300" required placeholder="例如：卧室空调不制冷"></textarea></label><button class="primary">提交报障</button></form></section><section class="service-card"><h3>想再住几天？</h3><p class="muted">当前预计退房：${esc(stay.expected_checkout_date)}</p><form id="extension-form"><label>希望退房日期<input name="target_checkout_date" type="date" min="${esc(stay.expected_checkout_date)}" required></label><label>备注<input name="note" maxlength="300" placeholder="费用由前台人工核实报价"></label><button class="primary">提交续房申请</button></form></section></div>`;
   }
@@ -86,33 +87,16 @@ async function sales() {
   $("#content").innerHTML=pageHead("经营数据","从单店到多店，以相同口径了解经营表现。",'<span class="tag amber">门店经营概览</span>')+`<section class="panel"><form id="sales-filter" class="filters"><label>门店<select name="hotel"><option value="">全部授权门店</option>${state.stores.map(s=>`<option value="${esc(s.hotel)}" ${state.salesHotel===s.hotel?"selected":""}>${esc(s.name)}</option>`).join("")}</select></label><label>开始日期<input name="from" type="date" value="${esc(state.salesFrom)}" required></label><label>结束日期<input name="to" type="date" value="${esc(state.salesTo)}" required></label><button class="primary">查询数据</button></form></section><div class="stats"><div class="stat"><span>销售额</span><strong>${money(data.totals.sales_amount_minor)}</strong><small>已结算订单口径</small></div><div class="stat"><span>订单数</span><strong>${data.totals.order_count}</strong><small>含所选日期首尾</small></div><div class="stat"><span>所选门店</span><strong>${data.by_store.length}</strong><small>仅当前身份授权门店</small></div><div class="stat"><span>统计天数</span><strong>${data.daily_trend.length}</strong><small>北京时间营业日</small></div></div><div class="grid"><section class="panel"><div class="panel-head"><h3>每日销售趋势</h3><small>人民币元</small></div><div class="bars">${data.daily_trend.map(d=>`<div class="bar-col" title="${esc(d.date)} ${money(d.sales_amount_minor)}"><div class="bar" style="height:${Math.max(1,d.sales_amount_minor/dailyMax*150)}px" role="img" aria-label="${esc(d.date)} ${money(d.sales_amount_minor)}"></div><small>${esc(d.date.slice(5))}</small></div>`).join("")}</div></section><section class="panel"><div class="panel-head"><h3>门店销售对比</h3><small>销售额降序</small></div><div class="ranking">${data.by_store.map((s,i)=>`<div><div class="rank-head"><span>${i+1}. ${esc(s.name)}</span><b>${money(s.sales_amount_minor)}</b></div><div class="rank-track"><div class="rank-fill" style="width:${s.sales_amount_minor/max*100}%"></div></div></div>`).join("")||empty("暂无门店")}</div></section></div><section class="panel"><h3>业务分类</h3>${data.by_category.map(c=>`<div class="category-row"><span>${cats[c.category]} <small class="muted">${c.order_count} 单</small></span><b>${money(c.sales_amount_minor)}</b></div>`).join("")}</section><p class="fine">本页使用独立营业台账。续房报价、点餐下单和服务完成不会自动计入收入。</p>`;
 }
 function resolver() {$("#content").innerHTML=pageHead("名称助手","把用户口中的门店，匹配到可查询的业务实体。",'<span class="tag">仅当前授权范围</span>')+`<section class="panel resolver"><h3>想查询哪家门店？</h3><p class="muted">支持门店别名与近似名称，存在歧义时先澄清再查询。</p><form id="resolve-form" class="filters"><label>识别到的门店名称<input name="query" placeholder="试试：中心门店、江盼店、市区店" maxlength="80" required></label><button class="primary">解析名称</button></form><div id="resolution"></div></section>`;}
-async function connections() {
-  const data=await api("connections");
-  const labels={disabled:"未启用",stopped:"已停止",connecting:"连接中",connected:"传输已连接",retrying:"正在重试"};
-  $("#content").innerHTML=pageHead("AI 接入配置",role()==="manager"?"配置经营查询智能体，查询当前账号授权的门店销售数据。":"将本店的客房或前台身份接入对应智能体，保存后立即生效。",'<button data-refresh>↻ 刷新连接状态</button>')+`<div class="notice">每个身份使用独立接入点。测试检查 WebSocket 握手与心跳；业务工具和通知请在智能体侧验证。修改配置无需重启服务。</div><div class="connection-grid">${data.connections.map(c=>`<section class="panel connection-card"><div class="panel-head"><div><p class="eyebrow">${c.role==="manager"?"经营查询智能体":c.role==="room"?"客房智能体":"前台智能体"}</p><h3>${c.role==="manager"?"经营销售查询":c.role==="room"?esc(c.room)+" 号客房":"前台服务"}</h3></div><span data-connection-state="${esc(c.id)}" class="tag ${c.state==="connected"?"green":c.state==="retrying"?"amber":"gray"}">${esc(labels[c.state]||c.state)}</span></div><p class="fine">业务身份 · ${esc(c.id)}</p>${c.role==="manager"?`<p class="fine">授权门店（${state.stores.length} 家）：${state.stores.map(s=>esc(s.name)).join("、")}。支持销售额、订单数、趋势和门店对比。</p>`:""}<p class="connection-address">${esc(c.masked_endpoint||"尚未配置接入点")}</p><form data-connection="${esc(c.id)}" data-version="${c.version}"><label>新的 MCP 接入点<input name="endpoint" type="password" maxlength="4096" autocomplete="off" spellcheck="false" placeholder="粘贴平台提供的 wss:// 接入地址"></label><p class="fine">保存后不回显完整地址。留空可测试当前已保存连接。</p><div class="connection-actions"><button type="submit" name="action" value="test">测试连通性</button><button type="submit" name="action" value="save" class="primary">保存并生效</button><button type="submit" name="action" value="disable" ${c.configured?"":"disabled"}>停用连接</button></div><p class="connection-result" role="status" aria-live="polite"></p></form></section>`).join("")}</div>`;
-}
-async function submitConnection(form, action) {
-  const target=form.dataset.connection, value=form.elements.endpoint.value.trim();
-  const message=form.querySelector(".connection-result");
-  message.textContent=action==="test"?"正在测试，请稍候…":"正在保存并切换连接…";
-  try {
-    if(action==="test") {const result=await api(`connections/${encodeURIComponent(target)}/test`,value?{endpoint:value}:{});message.textContent=result.message;message.classList.toggle("error",!result.ok);return;}
-    if(action==="save"&&!value)throw new Error("请填写新的接入点；如需断开，请点击停用连接。");
-    const args={endpoint:action==="disable"?"":value,expected_version:Number(form.dataset.version)};
-    const signature=`connection:${state.auth.id}:${target}:${JSON.stringify(args)}`;
-    if(!retryKeys.has(signature))retryKeys.set(signature,crypto.randomUUID());
-    await api(`connections/${encodeURIComponent(target)}`,{...args,request_key:retryKeys.get(signature)});
-    retryKeys.delete(signature);form.reset();toast(action==="disable"?"连接已停用":"配置已保存，正在应用新连接");await connections();
-  } catch(error) {message.textContent=error.message;message.classList.add("error");}
-}
 async function showView(view, silent=false) {
   if (!state.session) return;
+  if(state.session.account.must_change_password)view="password";
   state.view=view; nav();
   if(!silent) $("#content").innerHTML='<div class="loading">正在获取最新业务数据…</div>';
-  try {await ({overview, requests, meals, bookings, sales, connections, resolve:resolver}[view]||overview)();$("#updated").textContent=`更新于 ${new Date().toLocaleTimeString("zh-CN")}`;}
-  catch(error){if(!silent)$("#content").innerHTML=`<section class="panel">${empty("暂时无法加载",esc(error.message))}<button data-refresh>重试</button></section>`;else toast(error.message);}
+  try {await ({overview, requests, meals, bookings, sales, connections, accounts:accountList, password:passwordPage, welcome:accountWelcome, resolve:resolver}[view]||overview)();$("#updated").textContent=`更新于 ${new Date().toLocaleTimeString("zh-CN")}`;}
+  catch(error){if(error.code==="STALE_CONTEXT"||!state.session)return;if(!silent)$("#content").innerHTML=`<section class="panel">${empty("暂时无法加载",esc(error.message))}<button data-refresh>重试</button></section>`;else toast(error.message);}
 }
 function available(r) {
+  if(state.session?.history_readonly)return [];
   if(r.request_type==="stay_extension"){const order=["confirm","begin","finish_success","finish_failed","quote","add_note","reject","cancel"];return [...(r.extension.available_actions[role()]||[])].sort((a,b)=>order.indexOf(a)-order.indexOf(b));}
   if(role()==="room")return r.status==="pending"?["cancel"]:[];
   if(r.status==="pending")return ["accept","reject","cancel"];
@@ -145,13 +129,8 @@ async function submitAction(form) {
   else{tool="hotel_process_request";args.action=a;args.note=values.note;}
   await write(tool,args); toast("操作已记录，业务状态已更新");await openDetail(r.id);
 }
-$("#login-form").addEventListener("submit",async event=>{
-  event.preventDefault();const form=event.currentTarget;const data=Object.fromEntries(new FormData(form));const btn=form.querySelector("button");btn.disabled=true;$("#login-error").textContent="";
-  state.auth={id:data.principal.trim(),token:data.token.trim()};
-  try{state.session=await api("session");form.reset();state.stores=has("hotel_list_stores")?(await call("hotel_list_stores")).stores:[];const p=state.session.principal;const store=state.stores.find(s=>s.hotel===p.hotel);$("#identity").textContent=`${store?.name||p.hotel||"授权多门店"} · ${{room:`${p.room}号客房`,frontdesk:"前台",manager:"经营管理"}[p.role]}`;$("#login").hidden=true;$("#workspace").hidden=false;await showView(role()==="manager"?"sales":"overview");}
-  catch(error){state.auth=null;state.session=null;$("#login-error").textContent=error.message;}finally{btn.disabled=false;}
-});
-$("#logout").addEventListener("click",()=>{state.auth=null;state.session=null;state.requests=[];state.stores=[];state.selected=null;state.salesFrom="";state.salesTo="";state.salesHotel="";state.filterType="";state.filterStatus="";retryKeys.clear();$("#detail").close();$("#content").replaceChildren();$("#workspace").hidden=true;$("#login").hidden=false;});
+installAccountUI();
+installConnectionUI();
 $("#close-detail").addEventListener("click",()=>{$("#detail").close();showView(state.view,true);});
 document.addEventListener("change",event=>{if(event.target.id==="action-select")actionFields();});
 document.addEventListener("input",event=>{if(event.target.matches("[data-qty]")){const total=[...document.querySelectorAll("[data-qty]")].reduce((sum,input)=>sum+(state.menu.find(m=>m.id===input.dataset.item)?.price_minor||0)*Number(input.value||0),0);$("#meal-total").textContent=money(total);}});
@@ -162,10 +141,10 @@ document.addEventListener("click",async event=>{
   catch(error){toast(error.message);}finally{state.busy=false;}
 });
 document.addEventListener("submit",async event=>{
-  const form=event.target;if(form.id==="login-form")return;event.preventDefault();if(state.busy)return;state.busy=true;const btn=event.submitter;if(btn)btn.disabled=true;
+  const form=event.target;if(form.id==="login-form"||form.hasAttribute("data-account-form"))return;event.preventDefault();if(state.busy)return;state.busy=true;const btn=event.submitter;if(btn)btn.disabled=true;
   const values=Object.fromEntries(new FormData(form));
   try{
-    if(form.dataset.connection)await submitConnection(form,btn?.value||"save");
+    if(form.id==="connection-create-form")await createConnection(form);
     if(form.id==="request-filter"){state.filterType=values.type;state.filterStatus=values.status;await requests();}
     if(form.id==="slot-filter"){state.bookingKind=values.kind;state.bookingDate=values.date;await bookings();}
     if(form.id==="sales-filter"){state.salesHotel=values.hotel;state.salesFrom=values.from;state.salesTo=values.to;await sales();}
@@ -183,7 +162,7 @@ setInterval(()=>{if(state.session&&!state.busy&&!$("#detail").open&&["overview",
 setInterval(async()=>{
   if(!state.session||state.busy||state.view!=="connections")return;
   try {const data=await api("connections");if(state.view!=="connections")return;
-    const labels={disabled:"未启用",stopped:"已停止",connecting:"连接中",connected:"传输已连接",retrying:"正在重试"};
+    const labels=connectionLabels;
     for(const row of data.connections){const el=[...document.querySelectorAll("[data-connection-state]")].find(e=>e.dataset.connectionState===row.id);if(el){el.textContent=labels[row.state]||row.state;el.className="tag "+(row.state==="connected"?"green":row.state==="retrying"?"amber":"gray");}}
   } catch(_) { /* Explicit refresh presents errors; background polling preserves typed credentials. */ }
 },5000);

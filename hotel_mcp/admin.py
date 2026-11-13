@@ -22,6 +22,12 @@ def admin_routes(endpoints, config, connections):
         if not endpoint or not hmac.compare_digest(request.headers.get("authorization", "").encode(),
                                                    ("Bearer " + endpoint.token).encode()):
             fail("UNAUTHORIZED", "入口编号或访问凭据不正确")
+        # Once the operator provisions web accounts, old shared page tokens
+        # must not bypass the new frontdesk/account restrictions. MCP routes
+        # remain independent machine interfaces with their existing contract.
+        with endpoint.store.connect() as db:
+            if db.execute("SELECT 1 FROM accounts LIMIT 1").fetchone():
+                fail("UNAUTHORIZED", "网页已启用账号登录，请重新登录工作台")
         endpoint.store.authorize(endpoint.principal)
         return endpoint
 

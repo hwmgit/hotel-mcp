@@ -145,7 +145,7 @@ def test_v4_upgrade_preserves_sales_and_rolls_back_on_failure(sales, monkeypatch
         HotelStore(store.path, migrate=True)
         assert store.sales.query(manager, "2026-10-12", "2026-10-18") == report
     with store.connect() as db:
-        assert db.execute("SELECT MAX(version) FROM schema_migrations").fetchone()[0] == (4 if inject_failure else 6)
+        assert db.execute("SELECT MAX(version) FROM schema_migrations").fetchone()[0] == (4 if inject_failure else 7)
         assert before == {t: [tuple(r) for r in db.execute(f'SELECT * FROM "{t}"')] for t in tables}
         assert not db.execute("PRAGMA foreign_key_check").fetchall()
         assert db.execute("PRAGMA integrity_check").fetchone()[0] == "ok"

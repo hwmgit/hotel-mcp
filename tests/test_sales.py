@@ -118,7 +118,7 @@ def test_v3_upgrade_preserves_business_data_and_does_not_seed_sales(business):
     migrated = HotelStore(store.path, migrate=True)
     HotelStore(store.path, migrate=True)
     with migrated.connect() as db:
-        assert db.execute("SELECT MAX(version) FROM schema_migrations").fetchone()[0] == 6
+        assert db.execute("SELECT MAX(version) FROM schema_migrations").fetchone()[0] == 7
         assert not db.execute("PRAGMA foreign_key_check").fetchall()
         assert db.execute("PRAGMA integrity_check").fetchone()[0] == "ok"
         after = {name: [tuple(r) for r in db.execute(f"SELECT * FROM {name}")] for name in tables}

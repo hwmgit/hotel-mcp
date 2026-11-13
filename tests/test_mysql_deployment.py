@@ -47,6 +47,40 @@ def test_controlled_compose_contract():
     assert "!hotel_mcp/web/" in (root / ".dockerignore").read_text()
 
 
+def test_mysql_web_accounts_session_scope_history_and_concurrency(mysql_demo):
+    from hotel_mcp.accounts import Accounts
+    from tests.test_accounts import (INITIAL, login_account, test_super_admin_processes_selected_store_with_events_and_idempotency,
+                                     test_customer_history_survives_checkout_without_exposing_next_guest,
+                                     test_mutations_idempotency_revocation_and_concurrent_creation)
+    store, config, summary, principal, _ = mysql_demo
+    accounts = Accounts(store)
+    accounts.bootstrap("root-admin", INITIAL)
+    root, token = login_account(accounts, "root-admin")
+    fixture = accounts, root, token, (store, principal("room-demo-central-101"), principal("frontdesk-demo-central"), summary, config)
+    test_super_admin_processes_selected_store_with_events_and_idempotency(fixture)
+    test_customer_history_survives_checkout_without_exposing_next_guest(fixture)
+    test_mutations_idempotency_revocation_and_concurrent_creation(fixture)
+
+
+def test_mysql_v6_accounts_upgrade_preserves_existing_business(mysql_demo):
+    from hotel_mcp.accounts import Accounts
+    store, config, summary, principal, _ = mysql_demo
+    with store.connect() as db:
+        for table in ("account_audit", "account_operations", "web_sessions", "account_stays", "accounts"):
+            db.execute(f"DROP TABLE {table}")
+        db.execute("DELETE FROM schema_migrations WHERE version=7")
+        before = [dict(r) for r in db.execute("SELECT * FROM requests ORDER BY id")]
+    with pytest.raises(ValueError, match="schema"):
+        HotelStore("mysql")
+    upgraded = HotelStore("mysql", migrate=True)
+    HotelStore("mysql", migrate=True)
+    with upgraded.connect() as db:
+        assert db.execute("SELECT MAX(version) FROM schema_migrations").fetchone()[0] == 7
+        assert [dict(r) for r in db.execute("SELECT * FROM requests ORDER BY id")] == before
+        assert db.execute("SELECT COUNT(*) FROM accounts").fetchone()[0] == 0
+    assert Accounts(upgraded).bootstrap("new-admin", "mysql-test-password")["role"] == "super_admin"
+
+
 @pytest.fixture(scope="session")
 def mysql_container(tmp_path_factory):
     if os.environ.get("HOTEL_TEST_MYSQL") != "1":
@@ -273,6 +307,8 @@ def test_built_image_with_mysql_and_private_volume(mysql_database, tmp_path):
                 pytest.fail("Built image never became healthy")
             assert http.get("/admin/").status_code == 200
             assert http.get("/admin/assets/app.js").status_code == 200
+            assert http.get("/admin/assets/account-ui.js").status_code == 200
+            assert http.get("/workspace/session").status_code == 401
         hook = subprocess.run(["docker", "exec", name, "python", "-m", "hotel_mcp.deployment", "prepare"],
                               capture_output=True, text=True, timeout=30)
         assert hook.returncode == 0 and json.loads(hook.stdout)["seeded"] is False
@@ -317,3 +353,8 @@ async def test_mysql_http_room_and_web_frontdesk(mysql_demo):
         server.should_exit = True
         await asyncio.wait_for(task, 8)
         sock.close()
+
+def test_mysql_agent_ticket_and_json_event_scope(mysql_demo):
+    from tests.test_agent_connections import assert_profile_scope
+    store, config, summary, principal, _ = mysql_demo
+    assert_profile_scope(store, principal('room-demo-central-101'), principal('frontdesk-demo-central'))
